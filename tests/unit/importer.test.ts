@@ -85,7 +85,7 @@ describe('importer', () => {
     }
     // Without folder information the two files cannot be told apart: report it
     const flat = await planImports([{ file: fileOf(gltf, jsonName) }, { file: fileOf(resources['organ.bin'], 'organ.bin') }, { file: fileOf(resources['textures/a/diffuse.png'], 'diffuse.png') }, { file: fileOf(resources['textures/b/diffuse.png'], 'diffuse.png') }]);
-    expect(flat.candidates[0].errors.join(' ')).toMatch(/2 selected files could be it/);
+    expect(flat.candidates[0].errors.join(' ')).toMatch(/Cannot tell which file/);
     expect(flat.candidates[0].errors.join(' ')).toMatch(/Choose a folder/);
   });
 

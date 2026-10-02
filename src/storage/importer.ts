@@ -104,7 +104,8 @@ export async function planImports(inputs: ImportInput[]): Promise<ImportPlan> {
       assertSupported(summary);
       if (kind === 'gltf') {
         const supplied = pool.map((p) => ({ name: p.file.name, path: p.path, input: p }));
-        const m = matchCompanions(summary.externalUris, supplied);
+        const dir = entry.path && entry.path.includes('/') ? entry.path.slice(0, entry.path.lastIndexOf('/')) : undefined;
+        const m = matchCompanions(summary.externalUris, supplied, { baseDir: dir });
         c.missing = m.missing;
         for (const [uri, hit] of Object.entries(m.matched)) {
           c.companions.push({ uri, input: hit.input });
@@ -112,7 +113,7 @@ export async function planImports(inputs: ImportInput[]): Promise<ImportPlan> {
         }
         if (summary.externalUris.length > LIMITS.maxCompanionFiles) c.errors.push(`This model refers to ${summary.externalUris.length} external files; the limit is ${LIMITS.maxCompanionFiles}.`);
         for (const a of m.ambiguous) {
-          c.errors.push(`The model refers to “${a.uri}”, but ${a.candidates.length} selected files could be it (${a.candidates.slice(0, 4).join(', ')}). Use “Choose a folder…” so their folders tell them apart, or select only the files this model needs.`);
+          c.errors.push(`Cannot tell which file is “${a.uri}”: the model refers to several different files with the same name, and the selected files do not carry their folder names (${a.candidates.slice(0, 4).join(', ')}). Use “Choose a folder…” on the model’s folder so they can be matched.`);
         }
         // Distinct companions only once each (a texture used by two URIs is stored once).
         c.totalBytes += [...new Set(c.companions.map((x) => x.input))].reduce((s, x) => s + x.file.size, 0);

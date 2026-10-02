@@ -64,7 +64,9 @@ export function ImportDialog({ open, onOpenChange, onImported }: { open: boolean
     setPlanning(true);
     setFailed([]);
     try {
-      const merged = [...inputs.filter((x) => !added.some((a) => a.file.name === x.file.name && a.file.size === x.file.size)), ...added];
+      // The same file picked twice replaces itself; different files that merely share a name (or size) are all kept.
+      const keyOf = (i: ImportInput) => `${i.path ?? ''}|${i.file.name}|${i.file.size}|${i.file.lastModified}`;
+      const merged = [...inputs.filter((x) => !added.some((a) => keyOf(a) === keyOf(x))), ...added];
       const p = await planImports(merged);
       setInputs(merged);
       setPlan(p);

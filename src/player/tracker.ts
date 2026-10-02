@@ -78,12 +78,13 @@ export class ProgressTracker {
   private listeners = new Set<Listener>();
   private readonly now: () => number;
   private readonly codecModels: CodecModel[];
-  private readonly storageKey: string;
+  /** Local-storage key; scoped to the learner once the LMS has told us who they are (shared computers). */
+  private storageKey: string;
 
   constructor(private readonly content: Pick<PackageContent, 'packageId' | 'contentHash' | 'completion' | 'models'>, private readonly opts: TrackerOptions = {}) {
     this.now = opts.now ?? (() => Date.now());
     this.codecModels = content.models.map((m) => ({ id: m.id, annotationIds: m.annotations.map((a) => a.id) }));
-    this.storageKey = `anatomy-scorm:${content.packageId}`;
+    this.storageKey = `anatomy-scorm:${content.packageId}:standalone`;
   }
 
   private get storage(): StorageLike | null {
@@ -125,6 +126,9 @@ export class ProgressTracker {
       return;
     }
     this.client = client;
+    // Scope the local safety copy to this learner so another learner on the same computer never inherits it.
+    const student = (client.get('cmi.core.student_id') ?? '').trim();
+    this.storageKey = `anatomy-scorm:${this.content.packageId}:lms:${student || 'unknown-learner'}`;
     const lessonMode = (client.get('cmi.core.lesson_mode') ?? 'normal').toLowerCase();
     if (lessonMode === 'browse' || lessonMode === 'review') {
       this.mode = 'browse';
@@ -161,10 +165,8 @@ export class ProgressTracker {
         this.progress = merged;
         this.resumed = this.resumed || merged.opened.length > 0;
       }
-      if (local.completed && !this.completed) {
-        this.completed = true;
-        this.completionWritten = false; // make sure the LMS hears about it
-      }
+      // Completion is never copied from the local safety copy: it is recomputed from the merged progress by the
+      // package's own rule, so stale local data cannot mark an LMS attempt complete on its own.
     }
   }
 

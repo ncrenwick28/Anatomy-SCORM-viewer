@@ -171,40 +171,74 @@ function decodeUri(uri: string): string {
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
 const normPath = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
 
+function resolvePath(p: string): string {
+  const out: string[] = [];
+  for (const part of p.split('/')) {
+    if (!part || part === '.') continue;
+    if (part === '..') out.pop();
+    else out.push(part);
+  }
+  return out.join('/');
+}
+
 /**
  * Matches the external URIs referenced by a .gltf to the files the user supplied.
  *
- * 1. The relative path inside the .gltf is compared with the supplied files' folder paths (folder uploads
- *    carry them), so `textures/a/diffuse.png` and `textures/b/diffuse.png` are told apart.
- * 2. Otherwise the bare file name is used, but only if exactly one supplied file has it. Several files with
- *    the same name and no folder information are reported as ambiguous rather than guessed.
+ * 1. Path matching. If the .gltf itself came from a folder (`baseDir`), each URI is resolved relative to that
+ *    folder and must equal a supplied file's path exactly, so several models in one folder each get their own
+ *    textures. Otherwise the URI must match the end of a supplied file's folder path.
+ * 2. Name matching, only for what path matching left over, and only when it is unambiguous: exactly one
+ *    unresolved reference has that file name and exactly one unclaimed file has it. If the model contains several
+ *    different files with the same name (`textures/a/diffuse.png`, `textures/b/diffuse.png`) and the selected
+ *    files carry no folder names, nothing is guessed: those references are reported as ambiguous.
  *
  * The matched *file object* is returned so callers never have to look it up by name again.
  */
-export function matchCompanions<T extends { name: string; path?: string }>(uris: string[], supplied: T[]): CompanionMatch<T> {
+export function matchCompanions<T extends { name: string; path?: string }>(uris: string[], supplied: T[], opts: { baseDir?: string } = {}): CompanionMatch<T> {
   const matched: Record<string, T> = {};
   const missing: string[] = [];
   const ambiguous: CompanionMatch<T>['ambiguous'] = [];
+  const claimed = new Set<T>();
+  const base = opts.baseDir ? resolvePath(normPath(opts.baseDir)) : '';
+  const norm = (uri: string) => resolvePath(normPath(decodeUri(uri)));
+  const pending: string[] = [];
   for (const uri of uris) {
-    const decoded = normPath(decodeUri(uri));
-    const wantedBase = baseName(decoded);
-    const byPath = supplied.filter((f) => {
-      if (!f.path) return false;
-      const fp = normPath(f.path);
-      return fp === decoded || fp.endsWith('/' + decoded);
-    });
-    if (byPath.length === 1) {
+    const decoded = norm(uri);
+    const expected = base ? resolvePath(`${base}/${normPath(decodeUri(uri))}`) : ''; // resolve ".." against the model's folder
+    const exact = base ? supplied.filter((f) => f.path && resolvePath(normPath(f.path)) === expected) : [];
+    const byPath = exact.length || base
+      ? exact // with a known folder only an exact resolved path counts
+      : supplied.filter((f) => {
+          if (!f.path) return false;
+          const fp = resolvePath(normPath(f.path));
+          return fp === decoded || fp.endsWith('/' + decoded);
+        });
+    if (byPath.length === 1 && !claimed.has(byPath[0])) {
       matched[uri] = byPath[0];
-      continue;
-    }
-    if (byPath.length > 1) {
+      claimed.add(byPath[0]);
+    } else if (byPath.length > 1) {
       ambiguous.push({ uri, candidates: byPath.map((f) => f.path ?? f.name) });
-      continue;
+    } else pending.push(uri);
+  }
+  // Name matching for the rest, grouped so one file can never stand in for two different references.
+  const groups = new Map<string, string[]>();
+  for (const uri of pending) {
+    const b = baseName(norm(uri));
+    groups.set(b, [...(groups.get(b) ?? []), uri]);
+  }
+  for (const [b, groupUris] of groups) {
+    // A file from a different folder tree (e.g. another model's textures) is never a candidate when this model's
+    // own folder is known.
+    const belongsElsewhere = (f: T) => !!base && !!f.path && f.path.includes('/') && !resolvePath(normPath(f.path)).startsWith(base + '/');
+    const files = supplied.filter((f) => !claimed.has(f) && !belongsElsewhere(f) && baseName(f.name).toLowerCase() === b);
+    if (!files.length) {
+      groupUris.forEach((u) => missing.push(decodeUri(u).replace(/^\.\//, '')));
+    } else if (groupUris.length === 1 && files.length === 1) {
+      matched[groupUris[0]] = files[0];
+      claimed.add(files[0]);
+    } else {
+      groupUris.forEach((u) => ambiguous.push({ uri: u, candidates: files.map((f) => f.path ?? f.name) }));
     }
-    const byName = supplied.filter((f) => baseName(f.name).toLowerCase() === wantedBase);
-    if (byName.length === 1) matched[uri] = byName[0];
-    else if (byName.length > 1) ambiguous.push({ uri, candidates: byName.map((f) => f.path ?? f.name) });
-    else missing.push(decodeUri(uri).replace(/^\.\//, ''));
   }
   return { matched, missing, ambiguous };
 }

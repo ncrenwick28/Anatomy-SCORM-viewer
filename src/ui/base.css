@@ -116,6 +116,7 @@ button.chip[aria-pressed='true'] { background: var(--accent); color: var(--accen
 .callout--ok { background: var(--success-soft); border-color: #acd9bd; color: #0f4527; }
 
 /* Rich text */
+.rich { overflow-wrap: anywhere; }
 .rich > :last-child { margin-bottom: 0; }
 .rich ul, .rich ol { margin: 0 0 0.75em; padding-left: 1.3em; }
 .rich li { margin: 0.15em 0; }

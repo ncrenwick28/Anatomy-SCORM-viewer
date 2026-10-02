@@ -246,3 +246,7 @@ code { font: 0.86em ui-monospace, SFMono-Regular, Menlo, monospace; background: 
   .app-header__right { gap: 8px; }
   .ws-tools .btn { font-size: 0.8rem; padding: 0 9px; }
 }
+
+/* Long unbroken titles wrap inside cards, the workspace bar and lists */
+.model-card__body h3, .model-card__meta, .ws-bar__title h1, .exp-models__text strong, .page-head h1 { overflow-wrap: anywhere; }
+.exp-models__text strong { white-space: normal; }

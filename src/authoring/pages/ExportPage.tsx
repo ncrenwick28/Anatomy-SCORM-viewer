@@ -89,12 +89,12 @@ export function ExportPage({ onGoLibrary }: { onGoLibrary: () => void }) {
     await db.putAsset({ id, name, mime: file.type, size: file.size, blob: file, createdAt: nowIso() });
     const old = config.logoAssetId;
     set({ logoAssetId: id });
-    if (old) { await useStudio.getState().flush(); await db.deleteAssets([old]); forgetAssetUrl(old); }
+    if (old) { await useStudio.getState().flush(); if (useStudio.getState().save.state === 'saved') { await db.deleteAssets([old]); forgetAssetUrl(old); } }
   };
   const removeLogo = async () => {
     const old = config.logoAssetId;
     set({ logoAssetId: null });
-    if (old) { await useStudio.getState().flush(); await (await getDb()).deleteAssets([old]); forgetAssetUrl(old); }
+    if (old) { await useStudio.getState().flush(); if (useStudio.getState().save.state === 'saved') { await (await getDb()).deleteAssets([old]); forgetAssetUrl(old); } }
   };
 
   const fullCheck = async () => {

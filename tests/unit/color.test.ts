@@ -15,10 +15,12 @@ describe('colour helpers', () => {
     expect(normaliseHex('nonsense', '#111111')).toBe('#111111');
   });
   it('derives an accent "ink" that reads on white and on the accent tint, even for extreme accents', () => {
-    for (const hex of ['#0b6e8a', '#ffe600', '#847508', '#ffffff', '#000000', '#7fffd4', '#ff69b4', '#f0e68c']) {
+    for (const hex of ['#0b6e8a', '#ffe600', '#847508', '#f5e663', '#ffffff', '#000000', '#7fffd4', '#ff69b4', '#f0e68c']) {
       const t = accentTheme(hex);
       expect(contrastRatio(t.ink, '#ffffff'), `${hex} ink on white`).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(t.ink, t.soft), `${hex} ink on soft`).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(t.ink, '#e3e9ee'), `${hex} ink on grey`).toBeGreaterThanOrEqual(4.5);
+      expect(contrastRatio(t.ink, '#eef2f5'), `${hex} ink on light grey`).toBeGreaterThanOrEqual(4.5);
       expect(contrastRatio(t.accent, t.contrast), `${hex} text on accent`).toBeGreaterThanOrEqual(4.5);
     }
   });

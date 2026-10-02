@@ -101,6 +101,7 @@ export class ProjectStore {
       regions: Array.isArray(stored.regions) ? stored.regions : base.regions,
       systems: Array.isArray(stored.systems) ? stored.systems : base.systems,
       exportConfig: { ...base.exportConfig, ...stored.exportConfig, features: { ...base.exportConfig.features, ...stored.exportConfig?.features } },
+      rev: stored.rev, // must round-trip: the next save compares it with what is stored (see commitChanges)
     };
   }
 
@@ -156,12 +157,21 @@ export class ProjectStore {
   async commitChanges(changes: {
     models: { record: ModelRecord; baseRev: string | undefined }[];
     project?: { record: Project; baseRev: string | undefined };
-  }): Promise<{ ok: true; revs: Record<string, string>; projectRev?: string } | { ok: false; conflicts: string[]; projectConflict: boolean }> {
-    const tx = this.db.transaction(['models', 'meta'], 'readwrite');
+  }): Promise<{ ok: true; revs: Record<string, string>; projectRev?: string } | { ok: false; conflicts: string[]; projectConflict: boolean; missingFiles: string[] }> {
+    const tx = this.db.transaction(['models', 'meta', 'assets'], 'readwrite');
     const models = tx.objectStore('models');
     const meta = tx.objectStore('meta');
     const conflicts: string[] = [];
+    const missingFiles: string[] = [];
     let projectConflict = false;
+    // A record whose model files were deleted elsewhere (e.g. in another tab) must not be (re)created.
+    const assetStore = tx.objectStore('assets');
+    for (const c of changes.models) {
+      const ids = [...c.record.assets.map((a) => a.id), ...(c.record.thumbnailAssetId ? [c.record.thumbnailAssetId] : [])];
+      const found = await Promise.all(ids.map((id) => wrap(assetStore.count(id))));
+      const modelFilesGone = c.record.assets.some((_, i) => found[i] === 0);
+      if (modelFilesGone) missingFiles.push(c.record.id);
+    }
     const existing = await Promise.all(changes.models.map((c) => wrap(models.get(c.record.id)) as Promise<ModelRecord | undefined>));
     changes.models.forEach((c, i) => {
       const stored = existing[i];
@@ -171,10 +181,11 @@ export class ProjectStore {
       const stored = (await wrap(meta.get('project'))) as Project | undefined;
       if ((stored?.rev ?? undefined) !== changes.project.baseRev) projectConflict = true;
     }
-    if (conflicts.length || projectConflict) {
+    const realConflicts = conflicts.filter((id) => !missingFiles.includes(id));
+    if (realConflicts.length || projectConflict || missingFiles.length) {
       tx.abort();
       await done(tx).catch(() => undefined);
-      return { ok: false, conflicts, projectConflict };
+      return { ok: false, conflicts: realConflicts, projectConflict, missingFiles };
     }
     const revs: Record<string, string> = {};
     for (const c of changes.models) {

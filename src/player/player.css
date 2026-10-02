@@ -131,3 +131,7 @@
   .pl-modelnav { width: 100%; }
   .pl-modelnav .btn { flex: 1; }
 }
+
+/* Long unbroken titles, words or URLs must wrap instead of widening the page */
+.pl-title, .pl-lead, .pl-brand__name, .pl-card__title, .pl-modelbar__title h1, .pl-about, .pl-intro, .pl-facts dd { overflow-wrap: anywhere; }
+.pl-brand__name { white-space: normal; }

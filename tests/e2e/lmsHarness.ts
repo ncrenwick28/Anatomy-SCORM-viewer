@@ -25,7 +25,7 @@ export function harnessHtml(): string {
     'cmi.suspend_data': q.get('suspend') || '',
     'cmi.core.lesson_location': q.get('location') || '',
     'cmi.core.lesson_mode': q.get('lesson_mode') || 'normal',
-    'cmi.core.student_id': 'learner-1', 'cmi.core.student_name': 'Learner, Test'
+    'cmi.core.student_id': q.get('student') || 'learner-1', 'cmi.core.student_name': 'Learner, Test'
   };
   var log = [], err = '0';
   var lms = { mode: mode, data: data, log: log, failing: mode === 'commitfail' && q.get('failnow') !== '0', initialised: false, finished: false };

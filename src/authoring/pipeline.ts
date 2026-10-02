@@ -136,6 +136,8 @@ export async function importCandidates(
     }
   }
   await useStudio.getState().flush();
+  const st = useStudio.getState().save.state;
+  if (out.imported.length && st !== 'saved') out.warnings.push('The imported models are on screen but could not be saved yet. Check the save indicator in the header before closing this tab.');
   navigator.storage?.persist?.().then((p) => useStudio.setState({ persistent: p }), () => undefined);
   } finally {
     endBusy();
@@ -221,8 +223,10 @@ export async function regenerateThumbnail(modelId: string, viewer?: ViewerCore |
   useStudio.getState().updateModel(modelId, (m) => ({ ...m, thumbnailAssetId: newThumb }));
   // Only delete the old file once the record that points at the new one has been saved.
   await useStudio.getState().flush();
+  const saved = useStudio.getState().save.state === 'saved';
   const stillUsed = useStudio.getState().models.some((m) => m.id !== modelId && m.thumbnailAssetId === old);
-  if (old && !stillUsed) {
+  // Keep the old file if the new reference could not be saved (it would otherwise dangle); the start-up sweep cleans up later.
+  if (old && !stillUsed && saved) {
     await db.deleteAssets([old]).catch(() => undefined);
     forgetAssetUrl(old);
   }

@@ -73,7 +73,7 @@ describe('optimistic concurrency between tabs', () => {
     const revA = first.ok ? first.revs[m.id] : '';
     // Tab B still holds the record as originally loaded (rev undefined) and tries to save its own edit
     const stale = await tabB.commitChanges({ models: [{ record: { ...readA, title: 'Edited in B' }, baseRev: undefined }], project: { record: defaultProject(), baseRev: undefined } });
-    expect(stale).toEqual({ ok: false, conflicts: [m.id], projectConflict: false });
+    expect(stale).toEqual({ ok: false, conflicts: [m.id], projectConflict: false, missingFiles: [] });
     expect((await tabA.getModel(m.id))?.title).toBe('Sample model');
     // After re-reading, tab B may save
     const ok = await tabB.commitChanges({ models: [{ record: { ...readA, title: 'Edited in B' }, baseRev: revA }] });
@@ -81,12 +81,27 @@ describe('optimistic concurrency between tabs', () => {
     expect((await tabA.getModel(m.id))?.title).toBe('Edited in B');
   });
 
-  it('detects a record deleted in another tab', async () => {
+  it('refuses to re-create or duplicate a model whose files were deleted in another tab', async () => {
     const m = await seed();
     const tabB = await ProjectStore.open('test-db');
     await tabB.deleteModel(m.id);
-    const r = await store.commitChanges({ models: [{ record: m, baseRev: 'rev-that-existed' }] });
-    expect(r.ok).toBe(false);
+    const resurrect = await store.commitChanges({ models: [{ record: m, baseRev: 'rev-that-existed' }] });
+    expect(resurrect).toMatchObject({ ok: false, missingFiles: [m.id] });
+    const duplicate = await store.commitChanges({ models: [{ record: { ...m, id: 'copy-1' }, baseRev: undefined }] });
+    expect(duplicate).toMatchObject({ ok: false, missingFiles: ['copy-1'] });
+    expect(await store.listModels()).toEqual([]); // nothing was (re)created
+  });
+
+  it('keeps the project revision when the project is read back (review A-21)', async () => {
+    const first = await store.commitChanges({ models: [], project: { record: defaultProject(), baseRev: undefined } });
+    expect(first.ok).toBe(true);
+    const projectRev = first.ok ? first.projectRev : undefined;
+    expect(projectRev).toBeTruthy();
+    // A reload reads the project; its revision must come back, or the next save looks like a conflict
+    const reread = await store.getProject();
+    expect(reread.rev).toBe(projectRev);
+    const second = await store.commitChanges({ models: [], project: { record: reread, baseRev: reread.rev } });
+    expect(second.ok).toBe(true);
   });
 });
 

@@ -8,10 +8,12 @@
 - Full screen uses the browser Fullscreen API. LMS iframes that do not allow it fall back to filling the frame.
 - Completion "viewed" is judged by the information panel having shown the annotation, not by time spent reading.
 - Progress is stored as bit masks keyed to the order of models and annotations in one build. If a package is re-exported with models or annotations added, removed or re-ordered and uploaded over an existing attempt, **all saved progress for that attempt is discarded** (opened models and viewed annotations), and the learner is told; the LMS completion status already recorded is kept. Renaming or re-describing items does not discard progress.
-- Progress kept in the browser (the fallback when the LMS cannot be reached) is per device.
+- Progress kept in the browser (the fallback when the LMS cannot be reached) is per device and per learner (keyed by the LMS student id). Two activities that use the same package share one local copy for the same learner.
+- Leaving a model in the workspace with an unsaved camera or structure change does not prompt; the header says when the view differs from the saved default.
+- With a very crowded cluster the label of the selected marker can still cover a few neighbouring markers.
 
 **Authoring**
-- Several tabs/windows can open the same project. Saves use optimistic concurrency: a tab that did not see another tab's newer save refuses to overwrite it and shows a banner offering to load the latest version or to overwrite deliberately. There is no live co-editing.
+- Several tabs/windows can open the same project. Saves use optimistic concurrency: a tab that did not see another tab's newer save refuses to overwrite it and shows a banner asking which version to keep (both choices ask for confirmation). Models deleted in another tab are never brought back or copied into a record without files. There is no live co-editing.
 - Storage is the browser's IndexedDB: per browser profile and per web address, subject to the browser's quota and eviction rules. Backups are the portability and recovery mechanism. There is no sync, login or multi-user editing.
 - Backups are read into memory; very large projects (multi-GB) may exceed what a browser tab can hold.
 - Import supports GLB/glTF 2.0 only (Draco and Meshopt compression included). KTX2/Basis textures, glTF 1.0, OBJ, FBX, STL, PLY and other formats are not supported. Animations are ignored; skinned meshes are shown in rest pose.

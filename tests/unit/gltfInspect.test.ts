@@ -91,6 +91,34 @@ describe('companion handling', () => {
     expect(noFolders.ambiguous).toHaveLength(1);
     expect(noFolders.ambiguous[0].candidates).toHaveLength(2);
   });
+  it('never lets one file stand in for two different references (review A-22)', () => {
+    const only = { name: 'diffuse.png' };
+    const one = matchCompanions(['textures/a/diffuse.png', 'textures/b/diffuse.png'], [only]);
+    expect(one.matched).toEqual({}); // one loose file cannot be both textures
+    expect(one.ambiguous.map((a) => a.uri).sort()).toEqual(['textures/a/diffuse.png', 'textures/b/diffuse.png']);
+    const two = matchCompanions(['textures/a/diffuse.png', 'textures/b/diffuse.png'], [{ name: 'diffuse.png' }, { name: 'diffuse.png' }]);
+    expect(two.matched).toEqual({});
+    expect(two.ambiguous).toHaveLength(2);
+    // a unique name is still matched by name alone
+    const ok = matchCompanions(['textures/skin.png'], [{ name: 'skin.png' }]);
+    expect(ok.matched['textures/skin.png']).toBeTruthy();
+  });
+  it('resolves references relative to each model\'s own folder when several models share a folder (review A-24)', () => {
+    const files = [
+      { name: 'diffuse.png', path: 'two/modelA/textures/diffuse.png' },
+      { name: 'diffuse.png', path: 'two/modelB/textures/diffuse.png' },
+    ];
+    const a = matchCompanions(['textures/diffuse.png'], files, { baseDir: 'two/modelA' });
+    const b = matchCompanions(['textures/diffuse.png'], files, { baseDir: 'two/modelB' });
+    expect(a.matched['textures/diffuse.png']).toBe(files[0]);
+    expect(b.matched['textures/diffuse.png']).toBe(files[1]);
+    // a missing texture is not satisfied by a same-named file belonging to another model
+    const missingOwn = matchCompanions(['textures/diffuse.png'], [files[1]], { baseDir: 'two/modelA' });
+    expect(missingOwn.matched).toEqual({});
+    // '..' segments resolve
+    const up = matchCompanions(['../shared/skin.png'], [{ name: 'skin.png', path: 'two/shared/skin.png' }], { baseDir: 'two/modelA' });
+    expect(up.matched['../shared/skin.png']).toBeTruthy();
+  });
   it('sanitises and de-duplicates file names', () => {
     const taken = new Set<string>();
     expect(sanitiseFileName('Héart Model (final).GLB', taken)).toBe('Heart-Model-final.glb');

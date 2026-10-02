@@ -68,8 +68,9 @@ export function accentTheme(accentInput: string): AccentTheme {
   const soft = shade(accent, 0.9);
   let ink = accent;
   let n = 0;
-  // The "ink" is used as text on white and on the soft tint (chips, selected rows), so it must reach 4.5:1 on both.
-  while ((contrastRatio(ink, '#ffffff') < 4.5 || contrastRatio(ink, soft) < 4.5) && n++ < 40) ink = shade(ink, -0.06);
+  // The "ink" is used as text on white, on the soft tint (chips, selected rows) and on the light greys behind hovered
+  // tabs and rows (#e3e9ee is the darkest), so it must reach 4.5:1 on all of them.
+  while ((contrastRatio(ink, '#ffffff') < 4.5 || contrastRatio(ink, soft) < 4.5 || contrastRatio(ink, '#e3e9ee') < 4.5) && n++ < 40) ink = shade(ink, -0.06);
   return { accent, ink, contrast: readableTextOn(accent), soft, softBorder: shade(accent, 0.7) };
 }
 

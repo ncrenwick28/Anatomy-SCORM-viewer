@@ -3,6 +3,7 @@ import { newId, nowIso } from '../../shared/ids';
 import { defaultExportConfig, type ExportConfig, type ModelRecord, type Project } from '../../shared/types';
 import { describeStorageError, defaultProject } from '../../storage/ProjectStore';
 import { getDb } from './db';
+import { toast } from './toasts';
 
 export type SaveState = 'saved' | 'saving' | 'dirty' | 'error' | 'conflict';
 
@@ -117,6 +118,7 @@ export const useStudio = create<StudioState>((set, get) => {
         await db.deleteModel(id);
         dirtyModels.delete(id);
         knownRev.delete(id);
+        channel?.postMessage({ type: 'deleted', at: Date.now() });
         set((s) => ({
           models: s.models.filter((m) => m.id !== id),
           project: { ...s.project, exportConfig: { ...s.project.exportConfig, selectedModelIds: s.project.exportConfig.selectedModelIds.filter((x) => x !== id) } },
@@ -188,12 +190,32 @@ export const useStudio = create<StudioState>((set, get) => {
             project: wasProjectDirty ? { record: project, baseRev: knownProjectRev } : undefined,
           });
           if (!result.ok) {
-            ids.forEach((i) => dirtyModels.add(i));
-            if (wasProjectDirty) projectDirty = true;
-            set((s) => ({
-              staleElsewhere: true,
-              save: { ...s.save, state: 'conflict', error: 'Another browser tab or window saved changes to this project after this tab loaded it. To avoid losing that work, this tab has stopped saving.' },
-            }));
+            // Models whose files no longer exist were deleted elsewhere: forget this tab's copy instead of resurrecting a broken record.
+            if (result.missingFiles.length) {
+              const gone = new Set(result.missingFiles);
+              const titles = get().models.filter((m) => gone.has(m.id)).map((m) => `“${m.title}”`);
+              set((s) => ({
+                models: s.models.filter((m) => !gone.has(m.id)),
+                project: { ...s.project, exportConfig: { ...s.project.exportConfig, selectedModelIds: s.project.exportConfig.selectedModelIds.filter((x) => !gone.has(x)) } },
+              }));
+              gone.forEach((id) => { knownRev.delete(id); dirtyModels.delete(id); });
+              toast.error(`${titles.join(', ')} ${titles.length === 1 ? 'was' : 'were'} deleted in another tab, so ${titles.length === 1 ? 'it' : 'they'} no longer exist${titles.length === 1 ? 's' : ''} here either. Nothing was restored.`);
+              set((s) => ({ staleElsewhere: true, save: { ...s.save, state: dirtyModels.size || projectDirty || wasProjectDirty ? 'dirty' : 'saved' } }));
+            }
+            const stillDirty = ids.filter((i) => !result.missingFiles.includes(i));
+            if (result.conflicts.length || result.projectConflict) {
+              stillDirty.forEach((i) => dirtyModels.add(i));
+              if (wasProjectDirty) projectDirty = true;
+              set((s) => ({
+                staleElsewhere: true,
+                save: { ...s.save, state: 'conflict', error: 'Another browser tab or window saved changes to this project after this tab loaded it. To avoid losing that work, this tab has stopped saving.' },
+              }));
+            } else if (result.missingFiles.length) {
+              // Only deleted-elsewhere models were refused: retry the rest straight away.
+              stillDirty.forEach((i) => dirtyModels.add(i));
+              if (wasProjectDirty) projectDirty = true;
+              schedule();
+            }
             return;
           }
           for (const [id, rev] of Object.entries(result.revs)) knownRev.set(id, rev);
@@ -228,13 +250,20 @@ export const useStudio = create<StudioState>((set, get) => {
         return;
       }
       const revs = await db.getRevisions([...dirtyModels]);
+      const deleted: string[] = [];
       for (const [id, rev] of Object.entries(revs.models)) {
-        if (rev === null) {
-          // Deleted elsewhere: saving this copy re-creates it.
-          knownRev.set(id, undefined);
-        } else {
-          knownRev.set(id, rev);
-        }
+        if (rev === null) deleted.push(id); // deleted elsewhere: it is not brought back
+        else knownRev.set(id, rev);
+      }
+      if (deleted.length) {
+        const gone = new Set(deleted);
+        const titles = get().models.filter((m) => gone.has(m.id)).map((m) => `“${m.title}”`);
+        deleted.forEach((id) => { knownRev.delete(id); dirtyModels.delete(id); });
+        set((s) => ({
+          models: s.models.filter((m) => !gone.has(m.id)),
+          project: { ...s.project, exportConfig: { ...s.project.exportConfig, selectedModelIds: s.project.exportConfig.selectedModelIds.filter((x) => !gone.has(x)) } },
+        }));
+        toast.info(`${titles.join(', ')} ${titles.length === 1 ? 'was' : 'were'} deleted in another tab and ${titles.length === 1 ? 'was' : 'were'} not restored.`);
       }
       knownProjectRev = revs.project;
       set((s) => ({ staleElsewhere: false, save: { ...s.save, state: 'dirty', error: null } }));

@@ -125,8 +125,10 @@ export function Gallery({ content, state, onOpen, restoreFocusId }: Props) {
           ) : (
             <ul className="pl-grid">
               {visible.map((m) => {
-                const viewed = state.progress.viewed[m.id]?.length ?? 0;
-                const required = m.annotations.filter((a) => a.required).length;
+                const requiredIds = m.annotations.filter((a) => a.required).map((a) => a.id);
+                const required = requiredIds.length;
+                const viewedSet = new Set(state.progress.viewed[m.id] ?? []);
+                const viewed = requiredIds.filter((id) => viewedSet.has(id)).length;
                 const regionNames = content.regions.filter((r) => m.regionIds.includes(r.id)).map((r) => r.name);
                 const systemNames = content.systems.filter((s) => m.systemIds.includes(s.id)).map((s) => s.name);
                 const isOpened = opened.has(m.id);

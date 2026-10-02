@@ -59,7 +59,24 @@ export function StructurePanel({ viewer, structure, labels = {}, onRename, tick 
     viewer.setNodeHidden(key, false);
   };
 
-  const displayName = (n: StructureNode) => labels[n.key] || n.name;
+  // Meshes often share a name (e.g. several "Part"); number the repeats so rows can be told apart.
+  const dupes = useMemo(() => {
+    const seen = new Map<string, number>();
+    const out = new Map<string, string>();
+    const all = [...nodes.values()];
+    const counts = new Map<string, number>();
+    for (const n of all) counts.set(labels[n.key] || n.name, (counts.get(labels[n.key] || n.name) ?? 0) + 1);
+    for (const n of all) {
+      const base = labels[n.key] || n.name;
+      if ((counts.get(base) ?? 0) > 1) {
+        const i = (seen.get(base) ?? 0) + 1;
+        seen.set(base, i);
+        out.set(n.key, `${base} (${i})`);
+      }
+    }
+    return out;
+  }, [nodes, labels]);
+  const displayName = (n: StructureNode) => dupes.get(n.key) ?? (labels[n.key] || n.name);
 
   const renderNode = (n: StructureNode): React.ReactNode => {
     const visible = viewer?.isNodeVisible(n.key) ?? true;
@@ -76,7 +93,7 @@ export function StructurePanel({ viewer, structure, labels = {}, onRename, tick 
           ) : (
             <span className="struct-twisty" aria-hidden="true" />
           )}
-          <button type="button" className="btn btn--ghost btn--icon btn--sm" aria-pressed={visible} aria-label={`${visible ? 'Hide' : 'Show'} ${name}`} title={visible ? 'Hide' : 'Show'} onClick={() => setVisible(n.key, !visible)}>
+          <button type="button" className="btn btn--ghost btn--icon btn--sm" aria-label={`${visible ? 'Hide' : 'Show'} ${name}`} title={visible ? 'Hide' : 'Show'} onClick={() => setVisible(n.key, !visible)}>
             {visible ? <Eye /> : <EyeOff />}
           </button>
           {editing === n.key ? (
@@ -98,7 +115,7 @@ export function StructurePanel({ viewer, structure, labels = {}, onRename, tick 
           {onRename && editing !== n.key && (
             <button type="button" className="btn btn--ghost btn--icon btn--sm" aria-label={`Rename ${name}`} title="Rename" onClick={() => setEditing(n.key)}><Pencil /></button>
           )}
-          <button type="button" className="btn btn--ghost btn--icon btn--sm" aria-pressed={isolated === n.key} aria-label={isolated === n.key ? `Stop isolating ${name}` : `Isolate ${name}`} title={isolated === n.key ? 'Show everything again' : 'Isolate (hide everything else)'} onClick={() => viewer?.isolate(isolated === n.key ? null : n.key)}>
+          <button type="button" className="btn btn--ghost btn--icon btn--sm" aria-label={isolated === n.key ? `Stop isolating ${name}` : `Isolate ${name}`} title={isolated === n.key ? 'Show everything again' : 'Isolate (hide everything else)'} onClick={() => viewer?.isolate(isolated === n.key ? null : n.key)}>
             <Focus />
           </button>
         </div>

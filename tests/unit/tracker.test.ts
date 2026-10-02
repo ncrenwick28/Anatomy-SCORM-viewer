@@ -345,14 +345,60 @@ describe('review fixes: status recovery and local mirror', () => {
     expect(api.cmi.core.lesson_status).toBe('incomplete');
   });
 
-  it('merges progress kept locally when the LMS lost it, and sends it to the LMS', () => {
+  it('never shows one learner another learner\'s local progress on a shared computer, nor copies local completion into the LMS', () => {
     const local = mem();
-    const first = new ProgressTracker(content('open-all'), { api: null, storage: local });
+    const asLearner = (id: string, extra: Record<string, string> = {}) => {
+      const api = asApi(lms({ entry: 'resume', lesson_status: 'incomplete', ...extra }));
+      const read = api.LMSGetValue.bind(api);
+      api.LMSGetValue = (n: string) => (n === 'cmi.core.student_id' ? id : read(n));
+      return api;
+    };
+    const apiA = asLearner('learner-a');
+    const a = new ProgressTracker(content('open-all'), { api: apiA, storage: local });
+    a.start();
+    a.openModel('m1');
+    a.openModel('m2'); // learner A completes on this computer
+    a.terminate();
+    expect(a.getState().completed).toBe(true);
+    // Learner B, mid-attempt elsewhere, uses the same computer
+    const apiB = asLearner('learner-b');
+    const b = new ProgressTracker(content('open-all'), { api: apiB, storage: local });
+    b.start();
+    vi.advanceTimersByTime(2000);
+    expect(b.getState().progress.opened).toEqual([]);
+    expect(b.getState().completed).toBe(false);
+    expect(apiB.writes['cmi.core.lesson_status']).not.toBe('completed');
+    // Learner A returning on the same computer still gets their own local copy merged
+    const apiA2 = asLearner('learner-a');
+    const a2 = new ProgressTracker(content('open-all'), { api: apiA2, storage: local });
+    a2.start();
+    expect(a2.getState().progress.opened.sort()).toEqual(['m1', 'm2']);
+  });
+
+  it('merges this learner\'s local copy when the LMS never received it, and sends it to the LMS', () => {
+    const local = mem();
+    // Session 1: the LMS accepts the session but rejects every write, so progress only reaches the local copy
+    let err = '0';
+    const broken: Scorm12Api = {
+      LMSInitialize: () => 'true',
+      LMSFinish: () => 'true',
+      LMSGetValue: (n) => ((err = '0'), n === 'cmi.core.student_id' ? 'learner-s1' : n === 'cmi.core.lesson_status' ? 'not attempted' : ''),
+      LMSSetValue: () => ((err = '391'), 'false'),
+      LMSCommit: () => ((err = '391'), 'false'),
+      LMSGetLastError: () => err,
+      LMSGetErrorString: () => 'General commit failure',
+      LMSGetDiagnostic: () => '',
+    };
+    const first = new ProgressTracker(content('open-all'), { api: broken, storage: local, retryMs: 600000 });
     first.start();
     first.openModel('m1');
     first.viewAnnotation('m1', 'a1');
+    vi.advanceTimersByTime(1500);
     first.terminate();
-    const api = asApi(lms({ entry: 'resume', lesson_status: 'incomplete' })); // the LMS has no suspend_data
+    // Session 2: the same learner relaunches; the LMS has an attempt in progress but no suspend_data
+    const api = asApi(lms({ entry: 'resume', lesson_status: 'incomplete' }));
+    const read = api.LMSGetValue.bind(api);
+    api.LMSGetValue = (n: string) => (n === 'cmi.core.student_id' ? 'learner-s1' : read(n));
     const t = new ProgressTracker(content('open-all'), { api, storage: local });
     t.start();
     expect(t.getState().progress.opened).toEqual(['m1']);

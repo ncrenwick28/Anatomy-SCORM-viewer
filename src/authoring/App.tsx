@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { BookOpen, HelpCircle, Library as LibraryIcon, Package } from 'lucide-react';
-import { ConfirmProvider } from './components/Modal';
+import { ConfirmProvider, useConfirm } from './components/Modal';
 import { BackupMenu } from './components/BackupMenu';
 import { SaveStatus } from './components/SaveStatus';
 import { Toasts } from './components/Toasts';
@@ -25,15 +25,62 @@ export function go(path: string) {
   location.hash = path;
 }
 
+/** Banners for edits made in another tab. Neither choice is the default: both can lose someone's work. */
+function SyncBanners() {
+  const saveState = useStudio((s) => s.save.state);
+  const stale = useStudio((s) => s.staleElsewhere);
+  const resolveConflict = useStudio((s) => s.resolveConflict);
+  const reload = useStudio((s) => s.reload);
+  const confirm = useConfirm();
+  if (saveState === 'conflict') {
+    return (
+      <div className="callout callout--error app-banner" role="alert" data-testid="conflict-banner">
+        <div>
+          <strong>This project was changed in another browser tab or window.</strong> To protect that work, this tab has stopped saving, and what you see here may be out of date. Choose which version to keep:
+          <div className="btn-row" style={{ marginTop: 8 }}>
+            <button
+              type="button"
+              className="btn btn--sm"
+              data-testid="conflict-reload"
+              onClick={async () => {
+                if (await confirm({ title: 'Discard the changes made in this tab?', message: 'This tab’s unsaved changes will be lost and the version saved in the other tab will be loaded.', confirmLabel: 'Discard and load the latest', danger: true })) void resolveConflict('reload');
+              }}
+            >
+              Keep the other tab’s version (discard this tab’s changes)
+            </button>
+            <button
+              type="button"
+              className="btn btn--sm"
+              data-testid="conflict-overwrite"
+              onClick={async () => {
+                if (await confirm({ title: 'Overwrite the other tab’s changes?', message: 'This tab’s version will replace what the other tab saved for the models you changed here.', confirmLabel: 'Overwrite', danger: true })) void resolveConflict('overwrite');
+              }}
+            >
+              Keep this tab’s version (overwrite the other)
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  }
+  if (stale) {
+    return (
+      <div className="callout callout--warn app-banner" role="status" data-testid="stale-banner">
+        <div>
+          <strong>This project was updated in another tab.</strong> Reload to see the latest changes before editing here.
+          <div className="btn-row" style={{ marginTop: 8 }}><button type="button" className="btn btn--sm" onClick={() => void reload()}>Reload the latest version</button></div>
+        </div>
+      </div>
+    );
+  }
+  return null;
+}
+
 export function App() {
   const status = useStudio((s) => s.status);
   const error = useStudio((s) => s.error);
   const init = useStudio((s) => s.init);
   const selectedCount = useStudio((s) => s.project.exportConfig.selectedModelIds.length);
-  const saveState = useStudio((s) => s.save.state);
-  const stale = useStudio((s) => s.staleElsewhere);
-  const resolveConflict = useStudio((s) => s.resolveConflict);
-  const reload = useStudio((s) => s.reload);
   const [route, setRoute] = useState<Route>(parse);
 
   useEffect(() => void init(), [init]);
@@ -104,24 +151,7 @@ export function App() {
           <BackupMenu />
         </div>
       </header>
-      {saveState === 'conflict' ? (
-        <div className="callout callout--error app-banner" role="alert" data-testid="conflict-banner">
-          <div>
-            <strong>This project was changed in another browser tab or window.</strong> To protect that work, this tab has stopped saving, and what you see here may be out of date.
-            <div className="btn-row" style={{ marginTop: 8 }}>
-              <button type="button" className="btn btn--sm btn--primary" onClick={() => void resolveConflict('reload')} data-testid="conflict-reload">Load the latest version (discard changes made in this tab)</button>
-              <button type="button" className="btn btn--sm" onClick={() => void resolveConflict('overwrite')} data-testid="conflict-overwrite">Overwrite with this tab’s version</button>
-            </div>
-          </div>
-        </div>
-      ) : stale ? (
-        <div className="callout callout--warn app-banner" role="status" data-testid="stale-banner">
-          <div>
-            <strong>This project was updated in another tab.</strong> Reload to see the latest changes before editing here.
-            <div className="btn-row" style={{ marginTop: 8 }}><button type="button" className="btn btn--sm" onClick={() => void reload()}>Reload the latest version</button></div>
-          </div>
-        </div>
-      ) : null}
+      <SyncBanners />
       <main id="main" className={`app-main ${route.name === 'model' ? 'app-main--wide' : ''}`}>
         {route.name === 'library' && <LibraryPage onOpenModel={(id) => go(`#/model/${encodeURIComponent(id)}`)} onGoExport={() => go('#/export')} />}
         {route.name === 'model' && <WorkspacePage key={route.id} modelId={route.id} onBack={() => go('#/')} onGoExport={() => go('#/export')} />}
