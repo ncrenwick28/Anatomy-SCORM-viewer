@@ -41,10 +41,21 @@ They drive the built application and **the exported ZIP itself** (unzipped and s
 | 8. Open the exported package and test the student UI | `02` gallery, branding, search, region/system filters, model view, list ⇄ marker selection, show/hide, self-study conceal/reveal, structure list, reset, back, no external requests, no console errors |
 | 9. Annotations and default views match authoring | `02` camera target/up/direction/fov identical, distance differs only by the documented aspect compensation, every annotation's world position identical |
 | 10. Completion, resume, LMS failure | `02` (with `scorm-again` and the mock LMS): completion by rule, nothing completes early, valid values, `suspend_data` ≤ 4096, resume with "Welcome back", no API → standalone claims, `LMSInitialize` failure, failing writes then recovery, LMS that throws |
+| Regression tests for review findings | `04`: restorable backups, two-tab conflicts, "viewed" with the list switched off, same-named textures in folders, `incomplete` re-sent after a failed launch, orphan sweep, saved-view indicator and focus order, axe on a populated export page, corrupt-model message |
 | Other requirements | `03`: markers hidden behind geometry; structure hide/isolate/persist; keyboard control of the viewer and list; no leaked viewers after leaving a model; student preview separate from authoring; backup/restore into a fresh browser profile; responsive layouts (390/820/1280 px, no horizontal scroll); **axe-core** (WCAG 2.0/2.1 A and AA) on library, import dialog, export, help, workspace tabs, player gallery/model/annotations |
 
 ## Results
-See the table at the end of this file (updated after the final run).
+
+Recorded after the fixes for independent review 1 (build of commit `66c821c`):
+
+| Suite | Result |
+|---|---|
+| Type-check (`npm run typecheck`) | clean |
+| Unit tests (`npm test`) | **94 passed** of 94 (8 files) |
+| Browser tests (`npx playwright test`, single worker, software WebGL) | **41 passed**, 1 skipped (`sample.spec.ts`, which only runs for `npm run sample:export`), 0 failed — 8.8 minutes |
+| axe-core (WCAG 2.0/2.1 A + AA) | no violations of any impact on any screen scanned; the export page was also scanned with check results listed |
+
+Independent review 1 (`docs/reviews/review-1.md`) ran the suites itself and found 31/32 passing with one flaky test; that test and the findings it exposed are fixed (see the review file and `tests/e2e/04-review-fixes.spec.ts`, which holds a regression test for each fixed defect).
 
 ## What is not verified
 - Behaviour in Moodle, Canvas, SCORM Cloud or any other real LMS (see `docs/LMS-NOTES.md`).
