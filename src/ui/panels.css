@@ -1,0 +1,54 @@
+/* Annotation list, detail card, structure tree. */
+.ann-list { display: flex; flex-direction: column; min-height: 0; gap: 8px; }
+.ann-search { position: relative; }
+.ann-search svg { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--text-muted); pointer-events: none; }
+.ann-search .input { padding-left: 36px; }
+.ann-cats { display: flex; flex-wrap: wrap; gap: 6px; }
+.ann-empty { padding: 20px 12px; color: var(--text-muted); text-align: center; font-size: 0.93rem; }
+.ann-items { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; }
+.ann-item {
+  display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 10px; border: 1px solid transparent;
+  background: transparent; text-align: left; cursor: pointer; min-height: 46px;
+}
+.ann-item:hover { background: var(--surface-2); }
+.ann-item.is-selected { background: var(--accent-soft); border-color: var(--accent); box-shadow: inset 4px 0 0 var(--accent); }
+.ann-num {
+  flex: none; display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; background: var(--accent); color: var(--accent-contrast);
+  font-size: 0.78rem; font-weight: 700;
+}
+.ann-num--lg { width: 34px; height: 34px; font-size: 0.95rem; }
+.ann-item.is-selected .ann-num { background: var(--highlight); color: #1a1400; box-shadow: 0 0 0 2px #1a1400; }
+.ann-text { flex: 1; min-width: 0; display: grid; }
+.ann-label { font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ann-cat { font-size: 0.78rem; color: var(--text-muted); }
+.ann-flags { display: flex; gap: 6px; color: var(--text-muted); }
+.ann-flag { display: inline-grid; place-items: center; }
+.ann-flag--ok { color: var(--success); }
+
+.ann-detail {
+  border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); box-shadow: var(--shadow-sm);
+  display: flex; flex-direction: column; min-height: 0; outline: none;
+}
+.ann-detail__head { display: flex; gap: 12px; align-items: flex-start; padding: 14px 14px 8px; }
+.ann-detail__title { flex: 1; min-width: 0; }
+.ann-detail__title h3 { font-size: 1.1rem; overflow-wrap: anywhere; }
+.ann-detail__meta { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-top: 4px; }
+.ann-detail__body { padding: 4px 16px 12px; overflow: auto; min-height: 0; font-size: 0.97rem; }
+.ann-detail__foot { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; justify-content: space-between; padding: 10px 14px 14px; border-top: 1px solid var(--border); }
+.ann-nav { display: flex; gap: 8px; }
+.ann-note { margin: 0 14px 8px; align-items: center; flex-wrap: wrap; }
+.ann-note span { flex: 1; min-width: 160px; }
+.ann-conceal { background: var(--surface-2); border-radius: 10px; padding: 14px; }
+.ann-link { margin-top: 10px; }
+.ann-link a { display: inline-flex; align-items: center; gap: 6px; font-weight: 600; }
+
+.struct { display: flex; flex-direction: column; gap: 10px; min-height: 0; }
+.struct-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.struct-tree, .struct-children { list-style: none; margin: 0; padding: 0; }
+.struct-row { display: flex; align-items: center; gap: 2px; min-height: 40px; border-radius: 8px; padding-right: 4px; }
+.struct-row:hover { background: var(--surface-2); }
+.struct-row.is-off .struct-name { color: var(--text-muted); text-decoration: line-through; text-decoration-color: rgba(77, 95, 107, 0.5); }
+.struct-row.is-isolated { background: var(--accent-soft); }
+.struct-twisty { width: 34px; flex: none; }
+.struct-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 0.93rem; padding: 0 6px; }
+.struct-edit { min-height: 34px; padding: 4px 8px; flex: 1; }

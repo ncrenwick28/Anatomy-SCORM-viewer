@@ -1,0 +1,135 @@
+/* Viewport and marker styles shared by the authoring app and the student player. */
+.av-viewer {
+  position: relative;
+  overflow: hidden;
+  width: 100%;
+  height: 100%;
+  min-height: 240px;
+  background: #dfe5ec;
+  --av-accent: #0b6e8a;
+  --av-accent-contrast: #ffffff;
+  isolation: isolate;
+}
+.av-viewer canvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+  outline: none;
+  cursor: grab;
+}
+.av-viewer canvas:active { cursor: grabbing; }
+.av-viewer--picking canvas { cursor: crosshair; }
+.av-viewer canvas:focus-visible { box-shadow: inset 0 0 0 3px var(--av-accent), inset 0 0 0 5px #fff; }
+
+.av-markers { position: absolute; inset: 0; pointer-events: none; overflow: hidden; z-index: 2; }
+.av-marker {
+  position: absolute; left: 0; top: 0; width: 36px; height: 36px; padding: 0; margin: -18px 0 0 -18px;
+  border: 0; background: none; pointer-events: auto; font: inherit; color: inherit; cursor: pointer;
+}
+.av-marker__dot {
+  position: absolute; inset: 0; margin: auto; width: 26px; height: 26px; box-sizing: border-box;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--av-accent); color: var(--av-accent-contrast);
+  border: 2px solid #fff;
+  box-shadow: 0 0 0 1.5px rgba(10, 20, 28, 0.7), 0 3px 8px rgba(10, 20, 28, 0.35);
+  font: 700 12px/1 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  transition: transform 0.12s ease, background 0.12s ease;
+}
+.av-marker:hover .av-marker__dot { transform: scale(1.14); }
+.av-marker:focus-visible { outline: none; }
+.av-marker:focus-visible .av-marker__dot { box-shadow: 0 0 0 3px #fff, 0 0 0 6px var(--av-accent); }
+.av-marker--selected .av-marker__dot {
+  width: 32px; height: 32px;
+  background: #ffd23f; color: #1a1400; border-color: #1a1400; border-width: 2.5px;
+  box-shadow: 0 0 0 3px #fff, 0 0 0 5px #1a1400, 0 4px 12px rgba(10, 20, 28, 0.5);
+}
+.av-marker--selected .av-marker__dot::after {
+  content: ''; position: absolute; inset: -9px; border-radius: 50%;
+  border: 3px solid #ffd23f; opacity: 0; animation: av-pulse 1.8s ease-out infinite;
+}
+@keyframes av-pulse { 0% { transform: scale(0.7); opacity: 0.95; } 100% { transform: scale(1.45); opacity: 0; } }
+.av-marker--ghost .av-marker__dot {
+  background: rgba(255, 255, 255, 0.55); color: var(--av-accent);
+  border: 2px dashed var(--av-accent); box-shadow: none; opacity: 0.85;
+}
+.av-marker--ghost.av-marker--selected .av-marker__dot { background: rgba(255, 210, 63, 0.85); color: #1a1400; border: 2.5px dashed #1a1400; }
+.av-marker--cluster .av-marker__dot { border-radius: 9px; width: 30px; background: #1d2f3c; color: #fff; }
+.av-marker__label {
+  display: none; position: absolute; left: 40px; top: 2px; max-width: 240px;
+  padding: 5px 9px; border-radius: 7px; background: rgba(12, 22, 30, 0.94); color: #fff;
+  font: 600 13px/1.25 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+  pointer-events: none;
+}
+.av-marker--flip .av-marker__label { left: auto; right: 40px; }
+.av-marker:hover .av-marker__label,
+.av-marker:focus-visible .av-marker__label,
+.av-marker--selected .av-marker__label { display: block; }
+.av-marker--selected { z-index: 3; }
+
+.av-cluster-pop {
+  position: absolute; left: 0; top: 0; margin: 14px 0 0 -8px; min-width: 190px; max-width: 280px;
+  max-height: 240px; overflow: auto; padding: 5px; border-radius: 10px; background: #fff; color: #14232e;
+  box-shadow: 0 10px 30px rgba(10, 20, 28, 0.35), 0 0 0 1px rgba(10, 20, 28, 0.12); pointer-events: auto; z-index: 5;
+}
+.av-cluster-pop__item {
+  display: flex; align-items: center; gap: 9px; width: 100%; text-align: left; padding: 7px 9px; border: 0; border-radius: 7px;
+  background: transparent; color: inherit; font: 500 14px/1.25 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif; cursor: pointer;
+}
+.av-cluster-pop__item:hover, .av-cluster-pop__item:focus-visible { background: #e8f1f5; outline: none; }
+.av-cluster-pop__item:focus-visible { box-shadow: inset 0 0 0 2px var(--av-accent); }
+.av-cluster-pop__num {
+  flex: none; display: grid; place-items: center; width: 22px; height: 22px; border-radius: 50%;
+  background: var(--av-accent); color: var(--av-accent-contrast); font-size: 12px; font-weight: 700;
+}
+
+.av-preview {
+  position: absolute; left: 0; top: 0; width: 0; height: 0; pointer-events: none; z-index: 4; display: none;
+}
+.av-preview::before {
+  content: ''; position: absolute; left: -15px; top: -15px; width: 30px; height: 30px; box-sizing: border-box;
+  border: 2px dashed #fff; border-radius: 50%; box-shadow: 0 0 0 1.5px rgba(10, 20, 28, 0.75);
+  background: rgba(255, 210, 63, 0.35);
+}
+.av-preview::after {
+  content: ''; position: absolute; left: -1px; top: -7px; width: 2px; height: 14px; background: #fff;
+  box-shadow: 0 0 0 1px rgba(10, 20, 28, 0.6); transform-origin: 50% 50%;
+}
+
+.av-loading {
+  position: absolute; inset: 0; z-index: 6; display: grid; place-content: center; justify-items: center; gap: 12px;
+  background: rgba(238, 242, 246, 0.82); color: #14232e; font: 500 15px/1.4 system-ui, -apple-system, 'Segoe UI', Roboto, sans-serif;
+  text-align: center; padding: 24px;
+}
+.av-loading__bar { width: min(280px, 70vw); height: 6px; border-radius: 99px; background: rgba(20, 35, 46, 0.15); overflow: hidden; }
+.av-loading__bar > i { display: block; height: 100%; width: 0; background: var(--av-accent); transition: width 0.15s linear; }
+.av-loading__bar--indeterminate > i { width: 40%; animation: av-slide 1.1s ease-in-out infinite; }
+@keyframes av-slide { 0% { transform: translateX(-100%); } 100% { transform: translateX(260%); } }
+.av-error { background: rgba(255, 255, 255, 0.95); }
+.av-error strong { font-size: 17px; }
+.av-error button { margin-top: 4px; }
+
+@media (prefers-reduced-motion: reduce) {
+  .av-marker--selected .av-marker__dot::after { animation: none; opacity: 0.6; transform: scale(1.2); }
+  .av-marker__dot { transition: none; }
+  .av-loading__bar--indeterminate > i { animation: none; width: 100%; opacity: 0.5; }
+}
+
+/* React viewport wrapper */
+.vp { position: relative; width: 100%; height: 100%; min-height: 260px; overflow: hidden; background: #dfe5ec; }
+.vp__host { position: absolute; inset: 0; }
+.vp__controls {
+  position: absolute; z-index: 5; left: 10px; right: 10px; bottom: 14px; display: flex; flex-wrap: wrap; justify-content: center; gap: 8px;
+  pointer-events: none;
+}
+.vp__group {
+  display: flex; gap: 4px; padding: 5px; border-radius: 12px; background: rgba(255, 255, 255, 0.92); backdrop-filter: blur(6px);
+  box-shadow: 0 4px 16px rgba(20, 35, 46, 0.18), 0 0 0 1px rgba(20, 35, 46, 0.08); pointer-events: auto;
+}
+.vp__group .btn { border-color: transparent; background: transparent; }
+.vp__group .btn:hover:not(:disabled) { background: var(--surface-3, #e3e9ee); }
+.vp__group .btn[aria-pressed='true'] { background: var(--accent-soft, #e2f1f5); }
+
+/* While placing or moving a marker, clicks must reach the surface even where an existing marker sits. */
+.av-viewer--picking .av-marker { pointer-events: none; }

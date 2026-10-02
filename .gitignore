@@ -1,0 +1,10 @@
+node_modules/
+dist/
+public/player/
+public/lib/draco/
+test-results/
+playwright-report/
+.vite/
+*.log
+.DS_Store
+tmp/

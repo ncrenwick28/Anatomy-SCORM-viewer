@@ -1,0 +1,57 @@
+{
+  "name": "anatomy-scorm-studio",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Authoring application and SCORM 1.2 exporter for interactive 3D anatomy learning packages.",
+  "license": "UNLICENSED",
+  "dependencies": {
+    "@radix-ui/react-alert-dialog": "^1.1.23",
+    "@radix-ui/react-dialog": "^1.1.23",
+    "@radix-ui/react-dropdown-menu": "^2.1.24",
+    "@radix-ui/react-tabs": "^1.1.21",
+    "fflate": "^0.8.3",
+    "lucide-react": "^1.49.0",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "three": "^0.186.1",
+    "three-mesh-bvh": "^0.9.15",
+    "zod": "^4.6.5",
+    "zustand": "^5.0.15"
+  },
+  "devDependencies": {
+    "@axe-core/playwright": "^4.13.0",
+    "@gltf-transform/core": "^4.5.1",
+    "@gltf-transform/extensions": "^4.5.1",
+    "@playwright/test": "^1.63.0",
+    "@types/react": "^19.3.0",
+    "@types/react-dom": "^19.3.0",
+    "@types/three": "^0.186.0",
+    "@vitejs/plugin-react": "^6.1.1",
+    "draco3dgltf": "^1.5.7",
+    "fake-indexeddb": "^6.2.5",
+    "playwright": "^1.63.0",
+    "scorm-again": "^3.4.4",
+    "tsx": "^4.23.15",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.2",
+    "vitest": "^5.0.3"
+  },
+  "scripts": {
+    "dev": "npm run build:player && vite",
+    "dev:player": "vite build --watch -c vite.player.config.ts",
+    "build:player": "vite build -c vite.player.config.ts",
+    "build": "npm run build:player && tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:e2e": "npm run build && playwright test",
+    "test:all": "npm run typecheck && npm run test && npm run test:e2e",
+    "demo:generate": "tsx scripts/generate-demo-models.ts",
+    "serve:package": "tsx scripts/serve-package.ts",
+    "sample:export": "npm run build && node scripts/sample-export.mjs"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}
