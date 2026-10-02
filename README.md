@@ -7,7 +7,7 @@ It is two products in one repository:
 1. **Authoring application** – library, importer, 3D viewer, annotation editor, student preview, backup/restore, export wizard with pre-export checks.
 2. **Student player** – the learning package itself: thumbnail gallery, browse by region/system, search, interactive 3D viewer, annotations (model + searchable list), self-study mode, completion tracking and resume.
 
-> **Status and honesty:** this was built and tested with automated unit tests and browser tests (including tests of the *exported* package), but **never against a real Moodle or Canvas**. See [`docs/TESTING.md`](docs/TESTING.md), [`docs/LMS-NOTES.md`](docs/LMS-NOTES.md) and [`docs/KNOWN-LIMITATIONS.md`](docs/KNOWN-LIMITATIONS.md) for what is and is not verified, and [`docs/reviews/`](docs/reviews) for the independent review reports.
+> **Status and honesty:** this was built and tested with automated unit tests (98) and browser tests (44, including tests of the *exported* package), but **never against a real Moodle or Canvas**. Two independent reviews scored the authoring app 7.1 then 6.1 and the exported package 8.2 then 7.8 out of 10 — **below the 9/10 target** — and the defects they found have since been fixed but not independently re-reviewed. See [`docs/TESTING.md`](docs/TESTING.md), [`docs/LMS-NOTES.md`](docs/LMS-NOTES.md) and [`docs/KNOWN-LIMITATIONS.md`](docs/KNOWN-LIMITATIONS.md) for what is and is not verified, and [`docs/reviews/`](docs/reviews) for the independent review reports.
 
 ## Quick start
 

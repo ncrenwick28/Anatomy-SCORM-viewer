@@ -46,16 +46,25 @@ They drive the built application and **the exported ZIP itself** (unzipped and s
 
 ## Results
 
-Recorded after the fixes for independent review 1 (build of commit `66c821c`):
+Recorded after the fixes for independent review 2 (build of commit `39200f1`):
 
 | Suite | Result |
 |---|---|
 | Type-check (`npm run typecheck`) | clean |
-| Unit tests (`npm test`) | **94 passed** of 94 (8 files) |
-| Browser tests (`npx playwright test`, single worker, software WebGL) | **41 passed**, 1 skipped (`sample.spec.ts`, which only runs for `npm run sample:export`), 0 failed — 8.8 minutes |
-| axe-core (WCAG 2.0/2.1 A + AA) | no violations of any impact on any screen scanned; the export page was also scanned with check results listed |
+| Unit tests (`npm test`) | **98 passed** of 98 (8 files) |
+| Browser tests (`npx playwright test`, single worker, software WebGL) | **44 passed**, 1 skipped (`sample.spec.ts`, which only runs for `npm run sample:export`), 0 failed — 10.0 minutes |
+| axe-core (WCAG 2.0/2.1 A + AA) | no serious or critical violations on any screen scanned (library, import dialog, export with and without listed checks, help, workspace tabs, player gallery/model/annotations) |
 
-Independent review 1 (`docs/reviews/review-1.md`) ran the suites itself and found 31/32 passing with one flaky test; that test and the findings it exposed are fixed (see the review file and `tests/e2e/04-review-fixes.spec.ts`, which holds a regression test for each fixed defect).
+`tests/e2e/04-review-fixes.spec.ts` holds a regression test for each defect the independent reviews found and that was fixed (A-01, A-02, A-03/A-22, A-21, A-23, P-01, P-02, P-21 and several smaller ones).
+
+### Independent reviews (a separate critic sub-agent, fresh build and fresh export each time)
+
+| Cycle | Authoring app | Exported package | Critical defects | Report |
+|---|---:|---:|---:|---|
+| Review 1 | 7.1 / 10 | 8.2 / 10 | 2 | `docs/reviews/review-1.md` |
+| Review 2 (shortened, at the lecturer's request) | 6.1 / 10 | 7.8 / 10 | 1 (a regression introduced by the review-1 fix) | `docs/reviews/review-2.md` |
+
+**Neither deliverable reached the 9/10 target in either review.** No third review was run (it was stopped at the requester's instruction after review 2). All defects reported in review 2 — including the critical one (false "changed in another tab" conflict after a reload) and the four major ones — were fixed afterwards and have regression tests, but **those fixes were not independently re-reviewed or re-scored**, so no score is claimed for the final build. Review 2 was deliberately shortened and lists what it did not test (mock-LMS failure modes, dense-model performance, Draco in a package, axe, keyboard-only passes, clip planes, orphan sweep).
 
 ## What is not verified
 - Behaviour in Moodle, Canvas, SCORM Cloud or any other real LMS (see `docs/LMS-NOTES.md`).
