@@ -123,6 +123,8 @@ export interface ModelRecord {
   meshLabels: Record<string, string>;
   createdAt: string;
   updatedAt: string;
+  /** Storage revision token, changed on every save; lets a stale browser tab detect that another tab saved first. */
+  rev?: string;
 }
 
 export interface Category {
@@ -157,6 +159,8 @@ export interface Project {
   regions: Category[];
   systems: Category[];
   exportConfig: ExportConfig;
+  /** Storage revision token (see ModelRecord.rev). */
+  rev?: string;
 }
 
 export const DEFAULT_LIGHTING: LightingSettings = {

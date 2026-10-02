@@ -28,6 +28,7 @@
     "@types/react-dom": "^19.3.0",
     "@types/three": "^0.186.0",
     "@vitejs/plugin-react": "^6.1.1",
+    "@xmldom/xmldom": "^0.9.12",
     "draco3dgltf": "^1.5.7",
     "fake-indexeddb": "^6.2.5",
     "playwright": "^1.63.0",

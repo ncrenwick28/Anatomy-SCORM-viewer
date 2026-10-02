@@ -18,7 +18,7 @@ export function ModelInfoList({ model }: { model: ModelRecord }) {
       <dt>File</dt><dd>{model.entryName} ({model.format.toUpperCase()}{model.assets.length > 1 ? `, ${model.assets.length} files` : ''})</dd>
       <dt>Size</dt><dd>{fmtBytes(s.totalBytes)} {warn && <span className="chip chip--warn">Large</span>}</dd>
       <dt>Geometry</dt><dd>{s.triangles.toLocaleString('en-GB')} triangles · {s.vertices.toLocaleString('en-GB')} vertices {s.triangles > LIMITS.trianglesWarn && <span className="chip chip--warn">Heavy</span>}</dd>
-      <dt>Structure</dt><dd>{s.meshCount} {s.meshCount === 1 ? 'mesh' : 'meshes'} · {s.materialCount} materials · {s.textureCount} textures</dd>
+      <dt>Structure</dt><dd>{s.meshCount} {s.meshCount === 1 ? 'mesh' : 'meshes'} · {s.materialCount} {s.materialCount === 1 ? 'material' : 'materials'} · {s.textureCount} {s.textureCount === 1 ? 'texture' : 'textures'}</dd>
       <dt>Dimensions</dt><dd>{s.boundsSize.map((v) => (Math.abs(v) >= 100 ? v.toFixed(0) : v.toFixed(2))).join(' × ')} (model units)</dd>
       {s.extensionsUsed.length > 0 && (<><dt>Extensions</dt><dd>{s.extensionsUsed.join(', ')}</dd></>)}
     </dl>
@@ -48,7 +48,7 @@ export function ModelFormDialog({ modelId, open, onOpenChange }: { modelId: stri
       setTouched(false);
       setShowPreview(false);
     }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [open, modelId]);
 
   const dirty = useMemo(

@@ -42,7 +42,7 @@ export function LibraryPage({ onOpenModel, onGoExport }: { onOpenModel: (id: str
   const visible = useMemo(() => {
     const list = models.filter((m) => matches(m));
     return sort === 'az' ? [...list].sort((a, b) => a.title.localeCompare(b.title, 'en-GB')) : [...list].reverse();
-  }, [models, q, regionF, systemF, selectedOnly, selected, sort]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [models, q, regionF, systemF, selectedOnly, selected, sort]);
   const count = (kind: 'region' | 'system', id: string) => models.filter((m) => matches(m, kind) && (kind === 'region' ? m.regionIds : m.systemIds).includes(id)).length;
   const filtering = !!(q || regionF.length || systemF.length || selectedOnly);
   const clearFilters = () => (setQ(''), setRegionF([]), setSystemF([]), setSelectedOnly(false));

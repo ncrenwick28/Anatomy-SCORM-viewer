@@ -1,6 +1,6 @@
 import { defineConfig } from 'vitest/config';
 import react from '@vitejs/plugin-react';
-import { copyDracoDecoder, dracoUrlFix } from './build/vitePlugins';
+import { copyDracoDecoder, dracoUrlFix } from './build/vitePlugins.ts';
 
 // Authoring application. The student player is built separately (vite.player.config.ts)
 // into public/player so that the exporter can fetch it from the same origin.

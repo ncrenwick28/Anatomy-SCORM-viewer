@@ -7,7 +7,7 @@ import { toast } from '../state/toasts';
 import { CheckboxGroup } from './CheckboxGroup';
 import { Modal } from './Modal';
 
-const fmt = (n: number) => (n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
+const fmt = (n: number) => (n < 1024 ? `${n} byte${n === 1 ? '' : 's'}` : n >= 1048576 ? `${(n / 1048576).toFixed(1)} MB` : `${Math.max(1, Math.round(n / 1024))} KB`);
 
 /** Reads dropped files and folders (folders recursively, keeping relative paths for texture matching). */
 async function collectDropped(dt: DataTransfer): Promise<ImportInput[]> {
@@ -103,8 +103,13 @@ export function ImportDialog({ open, onOpenChange, onImported }: { open: boolean
       toast.ok(`Imported ${out.imported.length} model${out.imported.length === 1 ? '' : 's'}.`);
       onImported?.(out.imported.map((m) => m.id));
     }
-    if (out.failed.length) setFailed(out.failed);
-    else onOpenChange(false);
+    for (const w of out.warnings) toast.info(w);
+    if (out.failed.length) {
+      // Nothing left that can be imported from this selection; make the user choose again.
+      setFailed(out.failed);
+      setInputs([]);
+      setPlan(null);
+    } else onOpenChange(false);
   };
 
   const Row = ({ c }: { c: ImportCandidate }) => {

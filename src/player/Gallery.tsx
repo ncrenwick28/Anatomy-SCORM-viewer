@@ -33,7 +33,7 @@ export function Gallery({ content, state, onOpen, restoreFocusId }: Props) {
       content.systems.some((s) => m.systemIds.includes(s.id) && s.name.toLowerCase().includes(needle))
     );
   };
-  const visible = useMemo(() => content.models.filter((m) => matches(m)), [content, q, regionId, systemId]); // eslint-disable-line react-hooks/exhaustive-deps
+  const visible = useMemo(() => content.models.filter((m) => matches(m)), [content, q, regionId, systemId]);
   const count = (kind: 'region' | 'system', id: string) =>
     content.models.filter((m) => matches(m, kind) && (kind === 'region' ? m.regionIds.includes(id) : m.systemIds.includes(id))).length;
   const opened = new Set(state.progress.opened);
@@ -59,7 +59,7 @@ export function Gallery({ content, state, onOpen, restoreFocusId }: Props) {
           </div>
         )}
         {state.contentChanged && (
-          <div className="callout callout--warn" role="status"><span>This package has been updated since you last used it, so your earlier annotation progress could not be restored.</span></div>
+          <div className="callout callout--warn" role="status"><span>This package has been updated (models or annotations were added, removed or reordered) since you last used it, so your earlier progress could not be restored.</span></div>
         )}
       </section>
 

@@ -232,6 +232,7 @@ test.describe.serial('authoring journey', () => {
     await card(page, 'Knee model').getByTestId('card-menu').click();
     await page.getByTestId('card-duplicate').click();
     await expect(card(page, 'Knee model (copy)')).toBeVisible();
+    await expect(page.getByRole('menu')).toHaveCount(0); // the previous menu must be gone before opening another
     await card(page, 'Knee model (copy)').getByTestId('card-menu').click();
     await page.getByTestId('card-delete').click();
     await expect(page.getByRole('alertdialog')).toContainText('cannot be undone');

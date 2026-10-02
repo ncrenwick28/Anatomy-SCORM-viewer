@@ -1,7 +1,6 @@
 import { expect, test, type Browser, type Page } from '@playwright/test';
-import { spawnSync } from 'node:child_process';
-import { mkdirSync, mkdtempSync, readFileSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
+import { DOMParser } from '@xmldom/xmldom';
+import { mkdirSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { prepareRoot, serveDirectory } from '../../scripts/serve-package';
 import { readZip } from '../../src/shared/zip';
@@ -100,11 +99,11 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     const listed = [...xml.matchAll(/<file href="([^"]+)"/g)].map((m) => m[1]);
     expect(new Set(listed)).toEqual(new Set(names.filter((n) => n !== 'imsmanifest.xml')));
     for (const n of names) expect(/^\/|\.\.|^[a-z]+:/i.test(n)).toBe(false);
-    // well-formed XML
-    const dir = mkdtempSync(join(tmpdir(), 'mf-'));
-    writeFileSync(join(dir, 'imsmanifest.xml'), files.get('imsmanifest.xml')!);
-    const r = spawnSync('xmllint', ['--noout', join(dir, 'imsmanifest.xml')], { encoding: 'utf8' });
-    if (!r.error) expect(r.status, r.stderr).toBe(0);
+    // well-formed XML (parsed with a JavaScript XML parser, so this never silently skips)
+    const problems: string[] = [];
+    const doc = new DOMParser({ onError: (level: string, msg: string) => problems.push(`${level}: ${msg}`) }).parseFromString(xml, 'text/xml');
+    expect(problems).toEqual([]);
+    expect(doc.documentElement!.localName).toBe('manifest');
     // No remote references in the launch page or the stylesheet
     for (const n of ['index.html', 'assets/player.css']) expect(new TextDecoder().decode(files.get(n)!)).not.toMatch(/https?:\/\//);
     // The package size is reasonable
@@ -121,7 +120,9 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     });
     const errors: string[] = [];
     page.on('pageerror', (e) => errors.push(e.message));
-    page.on('console', (m) => m.type() === 'error' && !/favicon|404/.test(m.text()) && errors.push(m.text()));
+    // Any failed request (a missing texture, model, thumbnail…) fails the test; only the browser's favicon probe is ignored.
+    page.on('response', (r) => r.status() >= 400 && !/favicon\.ico$/.test(r.url()) && errors.push(`${r.status()} ${r.url()}`));
+    page.on('console', (m) => m.type() === 'error' && !/Failed to load resource/.test(m.text()) && errors.push(m.text()));
     await page.goto(`${origin()}/index.html`);
     await expect(page.getByRole('heading', { level: 1 })).toHaveText('Cardio & knee <demo> "pack"');
     await expect(page.locator('.pl-logo')).toBeVisible();
@@ -296,10 +297,21 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     expect(d['cmi.core.lesson_status']).toBe('incomplete');
     expect(d['cmi.core.lesson_location']).toBe(snapshot.ids[HEART]);
     expect(d['cmi.suspend_data']).toMatch(/^a1\|/);
-    // Self-study: annotations only count once revealed
+    // Self-study: an annotation whose name is concealed must NOT count as viewed until it is revealed
+    await sco.getByRole('button', { name: 'Back to gallery' }).click();
+    await sco.locator('.pl-card', { hasText: 'Knee' }).click();
+    await expect(sco.locator('.vp__controls')).toBeVisible({ timeout: 60_000 });
+    await sco.getByRole('tab', { name: /Annotations/ }).click();
+    const progressText = () => sco.locator('.pl-progress__text').innerText();
+    const viewedNow = async () => Number(/(\d+) of \d+ annotations viewed/.exec(await progressText())![1]);
+    const before = await viewedNow();
     await sco.getByRole('switch', { name: /Self-study/ }).click();
-    const before = d['cmi.suspend_data'];
-    expect(before.length).toBeLessThan(200);
+    await sco.locator('.ann-item').first().click();
+    await expect(sco.getByTestId('annotation-detail')).toContainText('hidden for self-study');
+    await page.waitForTimeout(1200);
+    expect(await viewedNow()).toBe(before); // concealed: not counted
+    await sco.getByRole('button', { name: 'Reveal name and description' }).click();
+    await expect.poll(viewedNow).toBe(before + 1); // revealed: counted
   });
 
   test('10c. resume: progress is restored from suspend_data and the learner is offered where they left off', async ({ page }) => {

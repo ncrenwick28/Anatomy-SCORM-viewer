@@ -58,6 +58,16 @@ describe('parseRichText', () => {
     const b = parseRichText('the left_atrial_appendage here');
     expect((b[0] as Extract<Block, { t: 'p' }>).c.every((n) => n.t === 'text')).toBe(true);
   });
+  it('does not turn code-like text into emphasis or links inside literal HTML', () => {
+    const b = parseRichText('window.__pwned=1 and window.__pwned, plus <a href="https://evil.example/x">link</a>');
+    const walk = (inl: Inline[]): Inline[] => inl.flatMap((n) => ('c' in n ? [n, ...walk(n.c)] : [n]));
+    const nodes = walk((b[0] as Extract<Block, { t: 'p' }>).c);
+    expect(nodes.some((n) => n.t === 'em' || n.t === 'strong')).toBe(false);
+    expect(nodes.some((n) => n.t === 'link')).toBe(false); // the URL sits inside literal markup, so it stays text
+    expect(parseRichText('a _real emphasis_ here')[0]).toMatchObject({ t: 'p' });
+    const emph = walk((parseRichText('a _real emphasis_ here')[0] as Extract<Block, { t: 'p' }>).c);
+    expect(emph.some((n) => n.t === 'em')).toBe(true);
+  });
   it('returns nothing for empty text and plain text for search', () => {
     expect(parseRichText('   ')).toEqual([]);
     expect(toPlainText('A **b**\n- x\n- y')).toBe('A b x; y');

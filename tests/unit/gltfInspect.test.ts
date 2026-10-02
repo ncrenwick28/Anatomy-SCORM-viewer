@@ -73,12 +73,23 @@ describe('summariseGltf / assertSupported', () => {
 
 describe('companion handling', () => {
   it('matches by path, then by file name, case-insensitively, and reports missing files', () => {
-    const r = matchCompanions(['scene.bin', 'textures/Skin%20Map.PNG', 'missing.jpg'], [
-      { name: 'SCENE.bin' },
-      { name: 'skin map.png', path: 'model/textures/skin map.png' },
-    ]);
-    expect(r.matched).toEqual({ 'scene.bin': 'SCENE.bin', 'textures/Skin%20Map.PNG': 'skin map.png' });
+    const files = [{ name: 'SCENE.bin' }, { name: 'skin map.png', path: 'model/textures/skin map.png' }];
+    const r = matchCompanions(['scene.bin', 'textures/Skin%20Map.PNG', 'missing.jpg'], files);
+    expect(r.matched['scene.bin']).toBe(files[0]);
+    expect(r.matched['textures/Skin%20Map.PNG']).toBe(files[1]);
     expect(r.missing).toEqual(['missing.jpg']);
+    expect(r.ambiguous).toEqual([]);
+  });
+  it('tells same-named files apart by folder, and reports ambiguity instead of guessing', () => {
+    const a = { name: 'diffuse.png', path: 'organ/textures/a/diffuse.png' };
+    const b = { name: 'diffuse.png', path: 'organ/textures/b/diffuse.png' };
+    const withFolders = matchCompanions(['textures/a/diffuse.png', 'textures/b/diffuse.png'], [b, a]);
+    expect(withFolders.matched['textures/a/diffuse.png']).toBe(a);
+    expect(withFolders.matched['textures/b/diffuse.png']).toBe(b);
+    const noFolders = matchCompanions(['textures/a/diffuse.png'], [{ name: 'diffuse.png' }, { name: 'diffuse.png' }]);
+    expect(noFolders.matched).toEqual({});
+    expect(noFolders.ambiguous).toHaveLength(1);
+    expect(noFolders.ambiguous[0].candidates).toHaveLength(2);
   });
   it('sanitises and de-duplicates file names', () => {
     const taken = new Set<string>();

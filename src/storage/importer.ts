@@ -103,15 +103,19 @@ export async function planImports(inputs: ImportInput[]): Promise<ImportPlan> {
       c.summary = summary;
       assertSupported(summary);
       if (kind === 'gltf') {
-        const supplied = pool.map((p) => ({ name: p.file.name, path: p.path }));
+        const supplied = pool.map((p) => ({ name: p.file.name, path: p.path, input: p }));
         const m = matchCompanions(summary.externalUris, supplied);
         c.missing = m.missing;
-        for (const [uri, name] of Object.entries(m.matched)) {
-          const input = pool.find((p) => p.file.name === name)!;
-          c.companions.push({ uri, input });
-          used.add(input);
+        for (const [uri, hit] of Object.entries(m.matched)) {
+          c.companions.push({ uri, input: hit.input });
+          used.add(hit.input);
         }
-        c.totalBytes += c.companions.reduce((s, x) => s + x.input.file.size, 0);
+        if (summary.externalUris.length > LIMITS.maxCompanionFiles) c.errors.push(`This model refers to ${summary.externalUris.length} external files; the limit is ${LIMITS.maxCompanionFiles}.`);
+        for (const a of m.ambiguous) {
+          c.errors.push(`The model refers to “${a.uri}”, but ${a.candidates.length} selected files could be it (${a.candidates.slice(0, 4).join(', ')}). Use “Choose a folder…” so their folders tell them apart, or select only the files this model needs.`);
+        }
+        // Distinct companions only once each (a texture used by two URIs is stored once).
+        c.totalBytes += [...new Set(c.companions.map((x) => x.input))].reduce((s, x) => s + x.file.size, 0);
         if (c.missing.length) c.errors.push(`Missing ${c.missing.length} companion file${c.missing.length > 1 ? 's' : ''}: ${c.missing.slice(0, 6).join(', ')}${c.missing.length > 6 ? ', …' : ''}.`);
       } else if (summary.externalUris.length) {
         c.errors.push(`This GLB refers to external files (${summary.externalUris.slice(0, 3).join(', ')}), which is unusual for .glb. Re-export it with everything embedded.`);
@@ -156,10 +160,18 @@ export async function prepareAssets(c: ImportCandidate): Promise<PreparedModelFi
     add(entryName, c.entry.file);
   } else {
     const uriMap: Record<string, string> = {};
-    for (const comp of c.companions) uriMap[comp.uri] = sanitiseFileName(comp.input.file.name, taken);
+    const nameFor = new Map<ImportInput, string>();
+    for (const comp of c.companions) {
+      let name = nameFor.get(comp.input);
+      if (!name) {
+        name = sanitiseFileName(comp.input.file.name, taken); // unique even when two files share a name
+        nameFor.set(comp.input, name);
+      }
+      uriMap[comp.uri] = name;
+    }
     const json = rewriteGltfUris(parseGltfText(await c.entry.file.text()), uriMap);
     add(entryName, new Blob([JSON.stringify(json)], { type: 'model/gltf+json' }));
-    for (const comp of c.companions) add(uriMap[comp.uri], comp.input.file);
+    for (const [input, name] of nameFor) add(name, input.file);
   }
   return { entryName, format: c.kind, assets, totalBytes: assets.reduce((s, a) => s + a.ref.size, 0) };
 }

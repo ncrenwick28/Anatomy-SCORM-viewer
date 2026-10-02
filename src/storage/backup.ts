@@ -1,4 +1,5 @@
 import { newId } from '../shared/ids';
+import { repairBackupJson } from '../shared/repair';
 import { backupSchema, formatZodError, type BackupManifest } from '../shared/schema';
 import { LIMITS, SCHEMA_VERSION, type ModelRecord, type Project } from '../shared/types';
 import { buildZip, isSafeArchivePath, readZip, type ZipEntry, ZipLimitError } from '../shared/zip';
@@ -20,6 +21,8 @@ export interface BackupResult {
   modelCount: number;
   assetCount: number;
   bytes: number;
+  /** Cosmetic problems that were fixed in the backup copy (the live project is unchanged). */
+  repairs: string[];
 }
 
 export async function createBackup(store: ProjectStore, onProgress?: (done: number, total: number) => void): Promise<BackupResult> {
@@ -56,11 +59,17 @@ export async function createBackup(store: ProjectStore, onProgress?: (done: numb
     models: models.map((m) => ({ ...m, thumbnailAssetId: m.thumbnailAssetId && !missing.includes(m.thumbnailAssetId) ? m.thumbnailAssetId : null })),
     assets: records.map((r) => ({ id: r.id, path: `assets/${r.id}/${r.name}`, size: r.size, mime: r.mime, name: r.name })),
   };
-  const entries: ZipEntry[] = [{ path: 'project.json', data: new TextEncoder().encode(JSON.stringify(manifest, null, 2)), compress: true }];
+  // A backup must always be restorable: repair cosmetic problems (e.g. an empty annotation label left in the
+  // editor) now, and refuse to create a file that the restore step would reject.
+  const copy = structuredClone(manifest) as unknown;
+  const repaired = repairBackupJson(copy);
+  const check = backupSchema.safeParse(copy);
+  if (!check.success) throw new BackupError(`Cannot create a restorable backup: ${formatZodError(check.error)}`);
+  const entries: ZipEntry[] = [{ path: 'project.json', data: new TextEncoder().encode(JSON.stringify(check.data, null, 2)), compress: true }];
   for (const r of records) entries.push({ path: `assets/${r.id}/${r.name}`, data: r.blob, compress: false });
   const blob = await buildZip(entries, (d, t) => onProgress?.(d, t));
   const stamp = new Date().toISOString().slice(0, 16).replace(/[-:]/g, '').replace('T', '-');
-  return { blob, filename: `anatomy-project-backup-${stamp}.zip`, modelCount: models.length, assetCount: records.length, bytes: blob.size };
+  return { blob, filename: `anatomy-project-backup-${stamp}.zip`, modelCount: models.length, assetCount: records.length, bytes: blob.size, repairs: repaired.warnings };
 }
 
 export interface ParsedBackup {
@@ -96,10 +105,11 @@ export async function parseBackup(file: Blob): Promise<ParsedBackup> {
   if (typeof probe.schemaVersion === 'number' && probe.schemaVersion > SCHEMA_VERSION) {
     throw new BackupError(`This backup was made by a newer version (schema ${probe.schemaVersion}). Update the application to restore it.`);
   }
+  const repaired = repairBackupJson(json);
   const result = backupSchema.safeParse(json);
-  if (!result.success) throw new BackupError(`The backup contents are invalid: ${formatZodError(result.error)}`);
+  if (!result.success) throw new BackupError(`This backup file is damaged or was not made by this version of the application, so nothing was changed. Technical details: ${formatZodError(result.error)}`);
   const manifest = result.data;
-  const warnings: string[] = [];
+  const warnings: string[] = [...repaired.warnings];
   const byId = new Map(manifest.assets.map((a) => [a.id, a]));
   let total = 0;
   for (const a of manifest.assets) {
@@ -140,9 +150,9 @@ export async function restoreBackup(store: ProjectStore, parsed: ParsedBackup, m
   const { manifest, files } = parsed;
   const assetMeta = new Map(manifest.assets.map((a) => [a.id, a]));
   if (mode === 'replace') {
-    const project: Project = { regions: manifest.regions, systems: manifest.systems, exportConfig: manifest.exportConfig };
+    const project: Project = { regions: manifest.regions, systems: manifest.systems, exportConfig: manifest.exportConfig, rev: newId('rev') };
     const assets = manifest.assets.map((a) => toAssetRecord(a, files.get(a.path)!));
-    await store.replaceAll(project, manifest.models as ModelRecord[], assets);
+    await store.replaceAll(project, (manifest.models as ModelRecord[]).map((m) => ({ ...m, rev: newId('rev') })), assets);
     return { models: manifest.models.length };
   }
   // Merge: always mint fresh ids so restoring the same backup twice never overwrites or collides.
@@ -163,6 +173,7 @@ export async function restoreBackup(store: ProjectStore, parsed: ParsedBackup, m
   const models: ModelRecord[] = manifest.models.map((m) => ({
     ...(m as ModelRecord),
     id: newId('model'),
+    rev: newId('rev'),
     assets: m.assets.map((a) => ({ ...a, id: mapAsset(a.id) })),
     thumbnailAssetId: m.thumbnailAssetId ? mapAsset(m.thumbnailAssetId) : null,
     createdAt: now,
@@ -173,6 +184,7 @@ export async function restoreBackup(store: ProjectStore, parsed: ParsedBackup, m
     regions: mergeCats(current.regions, manifest.regions),
     systems: mergeCats(current.systems, manifest.systems),
     exportConfig: current.exportConfig,
+    rev: newId('rev'),
   };
   await store.addAll(models, assets, project);
   return { models: models.length };

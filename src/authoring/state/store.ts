@@ -4,7 +4,7 @@ import { defaultExportConfig, type ExportConfig, type ModelRecord, type Project 
 import { describeStorageError, defaultProject } from '../../storage/ProjectStore';
 import { getDb } from './db';
 
-export type SaveState = 'saved' | 'saving' | 'dirty' | 'error';
+export type SaveState = 'saved' | 'saving' | 'dirty' | 'error' | 'conflict';
 
 interface StudioState {
   status: 'loading' | 'ready' | 'error';
@@ -13,6 +13,10 @@ interface StudioState {
   models: ModelRecord[];
   save: { state: SaveState; lastSavedAt: number | null; error: string | null };
   persistent: boolean | null;
+  /** Another tab saved changes since this tab loaded the project. */
+  staleElsewhere: boolean;
+  /** A long-running operation (e.g. an import) that should block "leave page" without a warning. */
+  busy: number;
 
   init: () => Promise<void>;
   reload: () => Promise<void>;
@@ -24,18 +28,30 @@ interface StudioState {
   updateExportConfig: (patch: Partial<ExportConfig>) => void;
   toggleSelected: (id: string) => void;
   flush: () => Promise<void>;
+  resolveConflict: (how: 'reload' | 'overwrite') => Promise<void>;
+  beginBusy: () => () => void;
 }
 
 const dirtyModels = new Set<string>();
 let projectDirty = false;
 let timer: ReturnType<typeof setTimeout> | null = null;
 let saving: Promise<void> | null = null;
+/** Revision of each record as this tab last read or wrote it. */
+const knownRev = new Map<string, string | undefined>();
+let knownProjectRev: string | undefined;
+let channel: BroadcastChannel | null = null;
 
 export const useStudio = create<StudioState>((set, get) => {
   const schedule = () => {
-    set((s) => ({ save: { ...s.save, state: 'dirty', error: null } }));
+    set((s) => (s.save.state === 'conflict' ? s : { save: { ...s.save, state: 'dirty', error: null } }));
     if (timer) clearTimeout(timer);
     timer = setTimeout(() => void get().flush(), 450);
+  };
+
+  const rememberRevs = (models: ModelRecord[], project: Project) => {
+    knownRev.clear();
+    for (const m of models) knownRev.set(m.id, m.rev);
+    knownProjectRev = project.rev;
   };
 
   return {
@@ -45,6 +61,8 @@ export const useStudio = create<StudioState>((set, get) => {
     models: [],
     save: { state: 'saved', lastSavedAt: null, error: null },
     persistent: null,
+    staleElsewhere: false,
+    busy: 0,
 
     async init() {
       try {
@@ -53,6 +71,7 @@ export const useStudio = create<StudioState>((set, get) => {
         // Drop selections whose model no longer exists.
         const ids = new Set(models.map((m) => m.id));
         const selected = project.exportConfig.selectedModelIds.filter((id) => ids.has(id));
+        rememberRevs(models, project);
         if (selected.length !== project.exportConfig.selectedModelIds.length) {
           project.exportConfig = { ...project.exportConfig, selectedModelIds: selected };
           projectDirty = true;
@@ -60,6 +79,12 @@ export const useStudio = create<StudioState>((set, get) => {
         set({ status: 'ready', project, models, error: null });
         if (projectDirty) schedule();
         navigator.storage?.persisted?.().then((p) => set({ persistent: p }), () => undefined);
+        // Tell other tabs when this one saves, and learn when they do.
+        if (typeof BroadcastChannel !== 'undefined' && !channel) {
+          channel = new BroadcastChannel('anatomy-scorm-studio');
+          channel.onmessage = () => set({ staleElsewhere: true });
+        }
+        void db.sweepOrphanAssets().catch(() => undefined);
       } catch (e) {
         set({ status: 'error', error: describeStorageError(e) });
       }
@@ -69,7 +94,8 @@ export const useStudio = create<StudioState>((set, get) => {
       await get().flush();
       const db = await getDb();
       const [project, models] = await Promise.all([db.getProject(), db.listModels()]);
-      set({ project, models });
+      rememberRevs(models, project);
+      set({ project, models, staleElsewhere: false });
     },
 
     addModel(m) {
@@ -90,6 +116,7 @@ export const useStudio = create<StudioState>((set, get) => {
       try {
         await db.deleteModel(id);
         dirtyModels.delete(id);
+        knownRev.delete(id);
         set((s) => ({
           models: s.models.filter((m) => m.id !== id),
           project: { ...s.project, exportConfig: { ...s.project.exportConfig, selectedModelIds: s.project.exportConfig.selectedModelIds.filter((x) => x !== id) } },
@@ -109,6 +136,7 @@ export const useStudio = create<StudioState>((set, get) => {
       const copy: ModelRecord = {
         ...structuredClone(src),
         id: newId('model'),
+        rev: undefined,
         title: `${src.title} (copy)`.slice(0, 120),
         isDemo: src.isDemo,
         annotations: src.annotations.map((a) => ({ ...structuredClone(a), id: newId('ann') })),
@@ -141,6 +169,7 @@ export const useStudio = create<StudioState>((set, get) => {
         timer = null;
       }
       if (saving) await saving;
+      if (get().save.state === 'conflict') return; // never write over another tab's work without an explicit choice
       if (!dirtyModels.size && !projectDirty) {
         set((s) => (s.save.state === 'saved' ? s : { save: { ...s.save, state: 'saved', error: null } }));
         return;
@@ -154,9 +183,26 @@ export const useStudio = create<StudioState>((set, get) => {
         try {
           const db = await getDb();
           const { models, project } = get();
-          await db.putModels(models.filter((m) => ids.includes(m.id)));
-          if (wasProjectDirty) await db.putProject(project);
-          set((s) => ({ save: { state: dirtyModels.size || projectDirty ? 'dirty' : 'saved', lastSavedAt: Date.now(), error: null } , models: s.models }));
+          const result = await db.commitChanges({
+            models: models.filter((m) => ids.includes(m.id)).map((m) => ({ record: m, baseRev: knownRev.get(m.id) })),
+            project: wasProjectDirty ? { record: project, baseRev: knownProjectRev } : undefined,
+          });
+          if (!result.ok) {
+            ids.forEach((i) => dirtyModels.add(i));
+            if (wasProjectDirty) projectDirty = true;
+            set((s) => ({
+              staleElsewhere: true,
+              save: { ...s.save, state: 'conflict', error: 'Another browser tab or window saved changes to this project after this tab loaded it. To avoid losing that work, this tab has stopped saving.' },
+            }));
+            return;
+          }
+          for (const [id, rev] of Object.entries(result.revs)) knownRev.set(id, rev);
+          if (result.projectRev) knownProjectRev = result.projectRev;
+          channel?.postMessage({ type: 'saved', at: Date.now() });
+          set((s) => ({
+            models: s.models.map((m) => (result.revs[m.id] ? { ...m, rev: result.revs[m.id] } : m)),
+            save: { state: dirtyModels.size || projectDirty ? 'dirty' : 'saved', lastSavedAt: Date.now(), error: null },
+          }));
           if (dirtyModels.size || projectDirty) schedule();
         } catch (e) {
           ids.forEach((i) => dirtyModels.add(i));
@@ -168,12 +214,48 @@ export const useStudio = create<StudioState>((set, get) => {
       })();
       await saving;
     },
+
+    /** Resolve an edit conflict: discard this tab's unsaved changes and load the latest, or overwrite with this tab's copy. */
+    async resolveConflict(how) {
+      if (saving) await saving;
+      const db = await getDb();
+      if (how === 'reload') {
+        dirtyModels.clear();
+        projectDirty = false;
+        const [project, models] = await Promise.all([db.getProject(), db.listModels()]);
+        rememberRevs(models, project);
+        set({ project, models, staleElsewhere: false, save: { state: 'saved', lastSavedAt: Date.now(), error: null } });
+        return;
+      }
+      const revs = await db.getRevisions([...dirtyModels]);
+      for (const [id, rev] of Object.entries(revs.models)) {
+        if (rev === null) {
+          // Deleted elsewhere: saving this copy re-creates it.
+          knownRev.set(id, undefined);
+        } else {
+          knownRev.set(id, rev);
+        }
+      }
+      knownProjectRev = revs.project;
+      set((s) => ({ staleElsewhere: false, save: { ...s.save, state: 'dirty', error: null } }));
+      await get().flush();
+    },
+
+    beginBusy() {
+      set((s) => ({ busy: s.busy + 1 }));
+      let ended = false;
+      return () => {
+        if (ended) return;
+        ended = true;
+        set((s) => ({ busy: Math.max(0, s.busy - 1) }));
+      };
+    },
   };
 });
 
 export function hasUnsavedWork(): boolean {
-  const s = useStudio.getState().save.state;
-  return s === 'dirty' || s === 'saving' || s === 'error';
+  const st = useStudio.getState();
+  return st.save.state === 'dirty' || st.save.state === 'saving' || st.save.state === 'error' || st.save.state === 'conflict' || st.busy > 0;
 }
 
 export function selectedModels(state: Pick<StudioState, 'models' | 'project'>): ModelRecord[] {

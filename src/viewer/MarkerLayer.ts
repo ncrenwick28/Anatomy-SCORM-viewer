@@ -25,6 +25,7 @@ interface Cluster {
 }
 
 const CLUSTER_RADIUS = 20;
+type LabelSide = 'right' | 'left' | 'above';
 
 export class MarkerLayer {
   readonly el: HTMLDivElement;
@@ -47,9 +48,13 @@ export class MarkerLayer {
     document.addEventListener('pointerdown', this.onDocPointerDown, true);
   }
 
-  render(markers: DisplayMarker[], width: number): void {
+  render(markers: DisplayMarker[], width: number, height = 0): void {
     const seen = new Set<string>();
     const clusters = this.cluster(markers);
+    const sides = new Map<string, LabelSide>();
+    for (const c of clusters) {
+      if (c.members.length === 1 && c.leader.selected) sides.set(c.leader.id, this.chooseLabelSide(c.leader, clusters, width, height));
+    }
     for (const c of clusters) {
       const solo = c.members.length === 1;
       const key = solo ? c.leader.id : `cluster:${c.leader.id}`;
@@ -60,7 +65,7 @@ export class MarkerLayer {
         this.elements.set(key, btn);
         this.el.appendChild(btn);
       }
-      this.update(btn, c, solo, width);
+      this.update(btn, c, solo, sides.get(c.leader.id) ?? (c.leader.x > width - 200 ? 'left' : 'right'));
     }
     for (const [key, btn] of this.elements) {
       if (!seen.has(key)) {
@@ -119,7 +124,32 @@ export class MarkerLayer {
     return btn;
   }
 
-  private update(btn: HTMLButtonElement, c: Cluster, solo: boolean, width: number): void {
+  /**
+   * Picks where the selected marker's label goes (right, left or above) so it covers as few neighbouring
+   * markers as possible and stays inside the viewport.
+   */
+  private chooseLabelSide(m: DisplayMarker, all: Cluster[], width: number, height: number): LabelSide {
+    const w = Math.min(240, m.label.length * 7.6 + 24);
+    const rects: Record<LabelSide, [number, number, number, number]> = {
+      right: [m.x + 22, m.y - 16, m.x + 22 + w, m.y + 14],
+      left: [m.x - 22 - w, m.y - 16, m.x - 22, m.y + 14],
+      above: [m.x - w / 2, m.y - 50, m.x + w / 2, m.y - 22],
+    };
+    const cost = (side: LabelSide) => {
+      const [x0, y0, x1, y1] = rects[side];
+      let n = 0;
+      for (const c of all) {
+        if (c.leader === m) continue;
+        const { x, y } = c.leader;
+        if (x > x0 - 16 && x < x1 + 16 && y > y0 - 16 && y < y1 + 16) n++;
+      }
+      if (x0 < 0 || (width && x1 > width) || y0 < 0 || (height && y1 > height)) n += 2;
+      return n;
+    };
+    return (['right', 'left', 'above'] as LabelSide[]).map((s, i) => ({ s, c: cost(s) * 10 + i })).sort((a, b) => a.c - b.c)[0].s;
+  }
+
+  private update(btn: HTMLButtonElement, c: Cluster, solo: boolean, side: LabelSide): void {
     const { leader } = c;
     btn.style.transform = `translate3d(${leader.x.toFixed(1)}px, ${leader.y.toFixed(1)}px, 0)`;
     btn.style.zIndex = leader.selected ? '3' : leader.ghost ? '1' : '2';
@@ -134,7 +164,8 @@ export class MarkerLayer {
       btn.setAttribute('aria-pressed', String(leader.selected));
       btn.classList.toggle('av-marker--selected', leader.selected);
       btn.classList.toggle('av-marker--ghost', leader.ghost);
-      btn.classList.toggle('av-marker--flip', leader.x > width - 200);
+      btn.classList.toggle('av-marker--flip', side === 'left');
+      btn.classList.toggle('av-marker--above', side === 'above');
       btn.classList.remove('av-marker--cluster');
       btn.onclick = (e) => {
         e.stopPropagation();
@@ -145,7 +176,7 @@ export class MarkerLayer {
       const text = `+${c.members.length}`;
       if (dot.textContent !== text) dot.textContent = text;
       btn.classList.add('av-marker--cluster');
-      btn.classList.remove('av-marker--selected', 'av-marker--ghost', 'av-marker--flip');
+      btn.classList.remove('av-marker--selected', 'av-marker--ghost', 'av-marker--flip', 'av-marker--above');
       btn.setAttribute('aria-label', `${c.members.length} annotations close together. Open a list to choose one.`);
       btn.removeAttribute('aria-pressed');
       btn.onclick = (e) => {

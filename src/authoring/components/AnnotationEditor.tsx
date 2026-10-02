@@ -29,10 +29,10 @@ export function AnnotationEditor({ annotation: a, index, categories, state, movi
     setLinkUrl(a.link?.url ?? '');
     setLinkTitle(a.link?.title ?? '');
     setTouched(false);
-  }, [a.id]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [a.id]);
 
-  const labelErr = !a.label.trim() ? 'Enter a short label.' : null;
-  const linkErr = linkUrl.trim() && !sanitiseUrl(linkUrl) ? 'Enter a full web address starting with http:// or https://' : null;
+  const labelErr = !a.label.trim() ? 'Enter a short label. An empty label is replaced by “Annotation n” when you leave the field.' : null;
+  const linkErr = linkUrl.trim() && !sanitiseUrl(linkUrl) ? 'Enter a full web address starting with http:// or https:// (it is not saved until valid).' : null;
 
   const commitLink = (url: string, title: string) => {
     const t = url.trim();
@@ -54,7 +54,7 @@ export function AnnotationEditor({ annotation: a, index, categories, state, movi
 
       <div className="field">
         <label htmlFor={`${uid}-label`}>Label</label>
-        <input id={`${uid}-label`} ref={labelRef} className="input" value={a.label} maxLength={LIMITS.maxAnnotationLabel} onChange={(e) => onChange({ label: e.target.value }, `${a.id}:label`)} onBlur={() => setTouched(true)} aria-invalid={touched && !!labelErr} aria-describedby={`${uid}-label-err`} data-testid="annotation-label" />
+        <input id={`${uid}-label`} ref={labelRef} className="input" value={a.label} maxLength={LIMITS.maxAnnotationLabel} onChange={(e) => onChange({ label: e.target.value }, `${a.id}:label`)} onBlur={() => { setTouched(true); const t = a.label.trim(); if (!t) onChange({ label: `Annotation ${index + 1}` }, `${a.id}:label`); else if (t !== a.label) onChange({ label: t }, `${a.id}:label`); }} aria-invalid={touched && !!labelErr} aria-describedby={`${uid}-label-err`} data-testid="annotation-label" />
         <span id={`${uid}-label-err`} className="error-text" role={touched && labelErr ? 'alert' : undefined}>{touched ? labelErr : ''}</span>
         <span className="hint">A short anatomical name, e.g. “Left ventricle”. {a.label.length}/{LIMITS.maxAnnotationLabel}</span>
       </div>
@@ -70,7 +70,7 @@ export function AnnotationEditor({ annotation: a, index, categories, state, movi
       </div>
       <div className="field">
         <label htmlFor={`${uid}-url`}>Reference link <span className="hint">(optional)</span></label>
-        <input id={`${uid}-url`} className="input" type="url" inputMode="url" value={linkUrl} placeholder="https://…" aria-invalid={!!linkErr} aria-describedby={`${uid}-url-err`} onChange={(e) => { setLinkUrl(e.target.value); commitLink(e.target.value, linkTitle); }} data-testid="annotation-link" />
+        <input id={`${uid}-url`} className="input" type="url" inputMode="url" maxLength={2000} value={linkUrl} placeholder="https://…" aria-invalid={!!linkErr} aria-describedby={`${uid}-url-err`} onChange={(e) => { setLinkUrl(e.target.value); commitLink(e.target.value, linkTitle); }} data-testid="annotation-link" />
         <span id={`${uid}-url-err`} className="error-text" role={linkErr ? 'alert' : undefined}>{linkErr ?? ''}</span>
         <label className="sr-only" htmlFor={`${uid}-ltitle`}>Link text</label>
         <input id={`${uid}-ltitle`} className="input" value={linkTitle} maxLength={120} placeholder="Link text (e.g. “Atlas page”)" disabled={!linkUrl.trim() || !!linkErr} onChange={(e) => { setLinkTitle(e.target.value); commitLink(linkUrl, e.target.value); }} />

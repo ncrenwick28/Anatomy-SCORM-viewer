@@ -58,6 +58,8 @@ export interface ImportProgress {
 export interface ImportOutcome {
   imported: ModelRecord[];
   failed: { title: string; message: string }[];
+  /** Non-blocking advice, e.g. a very dense mesh. */
+  warnings: string[];
 }
 
 function sourceFromPrepared(p: PreparedModelFiles): { source: ModelSource; dispose: () => void } {
@@ -76,7 +78,9 @@ export async function importCandidates(
   opts: { regionIds: string[]; systemIds: string[]; onProgress?: (p: ImportProgress) => void },
 ): Promise<ImportOutcome> {
   const db = await getDb();
-  const out: ImportOutcome = { imported: [], failed: [] };
+  const out: ImportOutcome = { imported: [], failed: [], warnings: [] };
+  const endBusy = useStudio.getState().beginBusy();
+  try {
   for (let i = 0; i < candidates.length; i++) {
     const { candidate, title } = candidates[i];
     const report = (stage: string, fraction: number | null = null) => opts.onProgress?.({ index: i, total: candidates.length, title, stage, fraction });
@@ -124,6 +128,7 @@ export async function importCandidates(
       };
       useStudio.getState().addModel(record);
       out.imported.push(record);
+      if (stats.triangles > LIMITS.trianglesWarn) out.warnings.push(`“${record.title}” has ${stats.triangles.toLocaleString('en-GB')} triangles. It will work, but tablets and older laptops may render it slowly; consider simplifying the mesh.`);
     } catch (e) {
       await db.deleteAssets(storedIds).catch(() => undefined);
       const msg = e instanceof Error ? e.message : String(e);
@@ -132,12 +137,17 @@ export async function importCandidates(
   }
   await useStudio.getState().flush();
   navigator.storage?.persist?.().then((p) => useStudio.setState({ persistent: p }), () => undefined);
+  } finally {
+    endBusy();
+  }
   return out;
 }
 
 /** Loads the bundled demonstration models (once). Returns how many were added. */
 export async function loadDemoContent(onProgress?: (p: ImportProgress) => void): Promise<number> {
   const base = import.meta.env.BASE_URL;
+  const endBusy = useStudio.getState().beginBusy();
+  try {
   const demo = (await (await fetch(`${base}demo/demo-project.json`)).json()) as DemoProject;
   const db = await getDb();
   const existing = new Set(useStudio.getState().models.map((m) => m.id));
@@ -179,6 +189,9 @@ export async function loadDemoContent(onProgress?: (p: ImportProgress) => void):
   });
   await useStudio.getState().flush();
   return added;
+  } finally {
+    endBusy();
+  }
 }
 
 /** Re-renders a model's thumbnail from its saved default view and stores it, replacing the old one. */
@@ -206,6 +219,8 @@ export async function regenerateThumbnail(modelId: string, viewer?: ViewerCore |
   const newThumb = await putThumb(blob);
   const old = model.thumbnailAssetId;
   useStudio.getState().updateModel(modelId, (m) => ({ ...m, thumbnailAssetId: newThumb }));
+  // Only delete the old file once the record that points at the new one has been saved.
+  await useStudio.getState().flush();
   const stillUsed = useStudio.getState().models.some((m) => m.id !== modelId && m.thumbnailAssetId === old);
   if (old && !stillUsed) {
     await db.deleteAssets([old]).catch(() => undefined);

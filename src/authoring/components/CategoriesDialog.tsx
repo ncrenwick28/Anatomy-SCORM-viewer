@@ -61,7 +61,7 @@ function CategoryList({ kind, title }: { kind: Kind; title: string }) {
         <h3 id={`cm-${kind}`}>{title}</h3>
         <button type="button" className="btn btn--sm btn--ghost" onClick={restore}><RotateCcw /> Restore standard</button>
       </div>
-      <ul className="cat-manage__list">
+      <ul className="cat-manage__list" tabIndex={0} aria-label={`${title} list`}>
         {list.map((c) => (
           <li key={c.id}>
             <label className="sr-only" htmlFor={`cm-${c.id}`}>Name of {singular} {c.name}</label>

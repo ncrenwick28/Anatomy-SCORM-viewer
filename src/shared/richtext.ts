@@ -74,7 +74,8 @@ function parseInline(src: string): Inline[] {
     if ((ch === '*' || ch === '_') && src[i + 1] !== ch && src[i + 1] !== ' ' && src[i + 1] !== undefined) {
       // Underscore emphasis only at word boundaries so snake_case stays intact.
       const prev = i > 0 ? src[i - 1] : ' ';
-      if (ch === '*' || !/[A-Za-z0-9]/.test(prev)) {
+      // Underscore emphasis needs a clear word boundary before it (never inside identifiers such as window.__x).
+      if (ch === '*' || /[\s([{"'“]/.test(prev) || i === 0) {
         const end = src.indexOf(ch, i + 1);
         if (end > i + 1 && src[end - 1] !== ' ' && (ch === '*' || !/[A-Za-z0-9]/.test(src[end + 1] ?? ' '))) {
           flush();
@@ -100,7 +101,7 @@ function parseInline(src: string): Inline[] {
         }
       }
     }
-    if (ch === 'h' && (src.startsWith('http://', i) || src.startsWith('https://', i))) {
+    if (ch === 'h' && (src.startsWith('http://', i) || src.startsWith('https://', i)) && !/["'=<]/.test(i > 0 ? src[i - 1] : ' ')) {
       URL_RE.lastIndex = i;
       const m = URL_RE.exec(src);
       if (m) {

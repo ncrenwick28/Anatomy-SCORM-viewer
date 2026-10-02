@@ -62,6 +62,34 @@ describe('ProjectStore', () => {
   });
 });
 
+describe('optimistic concurrency between tabs', () => {
+  it('refuses to overwrite a record another tab saved first, and writes nothing', async () => {
+    const m = await seed();
+    const tabA = store;
+    const tabB = await ProjectStore.open('test-db'); // a second connection = a second tab
+    const readA = (await tabA.listModels())[0];
+    const first = await tabA.commitChanges({ models: [{ record: readA, baseRev: readA.rev }] });
+    expect(first.ok).toBe(true);
+    const revA = first.ok ? first.revs[m.id] : '';
+    // Tab B still holds the record as originally loaded (rev undefined) and tries to save its own edit
+    const stale = await tabB.commitChanges({ models: [{ record: { ...readA, title: 'Edited in B' }, baseRev: undefined }], project: { record: defaultProject(), baseRev: undefined } });
+    expect(stale).toEqual({ ok: false, conflicts: [m.id], projectConflict: false });
+    expect((await tabA.getModel(m.id))?.title).toBe('Sample model');
+    // After re-reading, tab B may save
+    const ok = await tabB.commitChanges({ models: [{ record: { ...readA, title: 'Edited in B' }, baseRev: revA }] });
+    expect(ok.ok).toBe(true);
+    expect((await tabA.getModel(m.id))?.title).toBe('Edited in B');
+  });
+
+  it('detects a record deleted in another tab', async () => {
+    const m = await seed();
+    const tabB = await ProjectStore.open('test-db');
+    await tabB.deleteModel(m.id);
+    const r = await store.commitChanges({ models: [{ record: m, baseRev: 'rev-that-existed' }] });
+    expect(r.ok).toBe(false);
+  });
+});
+
 describe('backup and restore', () => {
   it('round-trips a project exactly (replace)', async () => {
     const m = await seed();
@@ -78,7 +106,7 @@ describe('backup and restore', () => {
     expect(parsed.warnings).toEqual([]);
     await restoreBackup(fresh, parsed, 'replace');
     const restored = (await fresh.listModels())[0];
-    expect(restored).toEqual(m);
+    expect({ ...restored, rev: undefined }).toEqual({ ...m, rev: undefined }); // restore stamps a fresh revision
     expect((await fresh.getProject()).exportConfig.title).toBe('My course');
     expect(new Uint8Array(await (await fresh.getAsset('model-1-glb'))!.blob.arrayBuffer())).toEqual(new Uint8Array([1, 2, 3, 4, 5]));
   });
@@ -103,7 +131,7 @@ describe('backup and restore', () => {
     const wrongApp = await buildZip([{ path: 'project.json', data: new TextEncoder().encode('{"app":"other"}') }]);
     await expect(parseBackup(wrongApp)).rejects.toThrow(/not created by this application/);
     const badSchema = await buildZip([{ path: 'project.json', data: new TextEncoder().encode('{"app":"anatomy-scorm-studio","schemaVersion":1}') }]);
-    await expect(parseBackup(badSchema)).rejects.toThrow(/invalid/);
+    await expect(parseBackup(badSchema)).rejects.toThrow(/damaged or was not made by this version/);
   });
 
   it('detects a backup with a missing or damaged asset and unsafe paths', async () => {
@@ -120,6 +148,73 @@ describe('backup and restore', () => {
     // Unsafe path
     manifest.assets[0].path = '../evil.glb';
     await expect(parseBackup(await buildZip([{ path: 'project.json', data: new TextEncoder().encode(JSON.stringify(manifest)) }]))).rejects.toThrow(/unsafe/);
+  });
+
+  it('always produces a restorable backup, repairing text the editor allowed (empty label, over-long link)', async () => {
+    const m = sampleModel();
+    m.annotations[0].label = '   ';
+    m.annotations[0].link = { url: `https://example.org/${'x'.repeat(2500)}`, title: 'long' };
+    m.annotations[0].description = 'd'.repeat(5000);
+    m.description = 'e'.repeat(9000);
+    await store.putModels([m]);
+    await store.putAsset({ id: 'asset-1', name: 'sample.glb', mime: 'model/gltf-binary', size: 5, blob: new Blob([new Uint8Array(5)]), createdAt: 'x' });
+    await store.putAsset({ id: 'asset-thumb-1', name: 'thumb.jpg', mime: 'image/jpeg', size: 3, blob: new Blob([new Uint8Array(3)]), createdAt: 'x' });
+    const backup = await createBackup(store);
+    expect(backup.repairs.join(' ')).toMatch(/no label/);
+    const parsed = await parseBackup(backup.blob); // must not throw
+    const a = parsed.manifest.models[0].annotations[0];
+    expect(a.label).toBe('Annotation 1');
+    expect(a.link).toBeNull();
+    expect(a.description.length).toBe(4000);
+    // The live project is untouched by the backup
+    expect((await store.getModel(m.id))!.annotations[0].label).toBe('   ');
+  });
+
+  it('restore repairs a backup that an older build wrote with an empty label instead of rejecting the project', async () => {
+    const m = await seed();
+    const good = await createBackup(store);
+    const parsed = await parseBackup(good.blob);
+    const manifest = JSON.parse(JSON.stringify(parsed.manifest));
+    manifest.models[0].annotations[0].label = '';
+    const entries = [{ path: 'project.json', data: new TextEncoder().encode(JSON.stringify(manifest)) }, ...manifest.assets.map((a: { path: string; id: string }) => ({ path: a.path, data: parsed.files.get(a.path)! }))];
+    const repaired = await parseBackup(await buildZip(entries));
+    expect(repaired.warnings.join(' ')).toMatch(/no label/);
+    expect(repaired.manifest.models[0].annotations[0].label).toBe('Annotation 1');
+    expect(m.id).toBe('model-1');
+  });
+
+  it('every state the editor can save round-trips through backup and restore (fuzzed)', async () => {
+    let seedN = 12345;
+    const rnd = () => ((seedN = (seedN * 1664525 + 1013904223) >>> 0) / 4294967296);
+    const pick = <T,>(xs: T[]): T => xs[Math.floor(rnd() * xs.length)];
+    const strings = ['', ' ', 'Plain', '  padded  ', 'ünïcödé 😀', '<script>alert(1)</script>', 'x'.repeat(10), 'y'.repeat(200), 'z'.repeat(9000), '**b** _i_ [l](https://e.org)'];
+    const links = [null, { url: 'https://example.org', title: '' }, { url: 'javascript:alert(1)', title: 't' }, { url: `https://e.org/${'q'.repeat(3000)}`, title: 'long' }, { url: '', title: '' }];
+    for (let round = 0; round < 40; round++) {
+      const m = sampleModel({ id: `fz-${round}`, assets: [{ id: `fz-${round}-glb`, name: 'a.glb', size: 5, mime: 'model/gltf-binary' }], entryName: 'a.glb', thumbnailAssetId: null });
+      m.title = pick(strings);
+      m.description = pick(strings);
+      m.credit = pick(strings);
+      m.annotations = Array.from({ length: 1 + Math.floor(rnd() * 5) }, (_, i) => ({
+        ...sampleModel().annotations[0],
+        id: `ann-${round}-${i}`,
+        label: pick(strings),
+        description: pick(strings),
+        category: pick(strings),
+        link: pick(links) as never,
+      }));
+      await store.putModels([m]);
+      await store.putAsset({ id: `fz-${round}-glb`, name: 'a.glb', mime: 'model/gltf-binary', size: 5, blob: new Blob([new Uint8Array(5)]), createdAt: 'x' });
+    }
+    const backup = await createBackup(store);
+    const parsed = await parseBackup(backup.blob);
+    expect(parsed.manifest.models).toHaveLength(40);
+    for (const m of parsed.manifest.models) {
+      expect(m.title.trim().length).toBeGreaterThan(0);
+      for (const a of m.annotations) {
+        expect(a.label.trim().length).toBeGreaterThan(0);
+        if (a.link) expect(a.link.url.startsWith('http')).toBe(true);
+      }
+    }
   });
 
   it('refuses to back up a project with missing model files', async () => {

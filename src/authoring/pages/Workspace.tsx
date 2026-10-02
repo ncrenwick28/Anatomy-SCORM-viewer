@@ -32,6 +32,8 @@ export function WorkspacePage({ modelId, onBack, onGoExport }: { modelId: string
   const confirm = useConfirm();
   const history = useAnnotationHistory(modelId);
   const viewerRef = useRef<ViewerCore | null>(null);
+  /** Camera as applied when the model opened or the view was last saved (after aspect compensation). */
+  const baselineRef = useRef<{ position: number[]; target: number[] } | null>(null);
   const stageRef = useRef<HTMLDivElement>(null);
   const labelRef = useRef<HTMLInputElement>(null);
   const fullscreen = useFullscreen(stageRef);
@@ -51,6 +53,7 @@ export function WorkspacePage({ modelId, onBack, onGoExport }: { modelId: string
   const [savingView, setSavingView] = useState(false);
   const [viewDirty, setViewDirty] = useState(false);
   const [cameraChanged, setCameraChanged] = useState(false);
+  const [structureChanged, setStructureChanged] = useState(false);
   const [announce, setAnnounce] = useState('');
 
   // Open the model's files as blob URLs for the viewer.
@@ -72,7 +75,7 @@ export function WorkspacePage({ modelId, onBack, onGoExport }: { modelId: string
       alive = false;
       dispose?.();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [modelId, model?.assets.map((a) => a.id).join()]);
 
   useEffect(() => {
@@ -162,6 +165,8 @@ export function WorkspacePage({ modelId, onBack, onGoExport }: { modelId: string
       await regenerateThumbnail(model.id, v);
       setViewDirty(false);
       setCameraChanged(false);
+      setStructureChanged(false);
+      baselineRef.current = { position: camera.position, target: camera.target };
       toast.ok('Default view saved and thumbnail updated. Students will open the model from this view.');
     } catch (e) {
       toast.error(`The default view could not be saved: ${(e as Error).message}`);
@@ -220,7 +225,7 @@ export function WorkspacePage({ modelId, onBack, onGoExport }: { modelId: string
         <button type="button" className="btn btn--sm" onClick={onBack}><ArrowLeft /> Library</button>
         <div className="ws-bar__title">
           <h1>{model.title}</h1>
-          <span className="hint">{model.annotations.length} annotation{model.annotations.length === 1 ? '' : 's'} · {savedCamera ? (cameraChanged ? 'View differs from the saved default' : 'Default view saved') : 'No default view saved yet'}</span>
+          <span className="hint">{model.annotations.length} annotation{model.annotations.length === 1 ? '' : 's'} · {savedCamera ? (cameraChanged || structureChanged ? 'View differs from the saved default (camera or structures): use “Save as default view” to keep it' : 'Default view saved') : 'No default view saved yet'}</span>
         </div>
         <div className="ws-bar__actions">
           <button type="button" className="btn btn--sm" onClick={() => setEditOpen(true)} data-testid="edit-details"><Pencil /> Details</button>
@@ -249,18 +254,27 @@ export function WorkspacePage({ modelId, onBack, onGoExport }: { modelId: string
               viewerRef={viewerRef}
               dracoPath={`${import.meta.env.BASE_URL}lib/draco/`}
               fullscreen={fullscreen}
-              onLoaded={(info) => setStructure(info.structure)}
+              onLoaded={(info, v) => {
+                setStructure(info.structure);
+                const c = v.getCameraView();
+                baselineRef.current = { position: c.position, target: c.target };
+              }}
               onMarkerClick={(id) => select(id)}
               onBackgroundClick={() => undefined}
               onPick={onPick}
               onMarkerStates={setStates}
-              onVisibility={() => { setTick((t) => t + 1); setViewDirty(true); }}
+              onVisibility={() => {
+                setTick((t) => t + 1);
+                setViewDirty(true);
+                const v = viewerRef.current;
+                if (v) setStructureChanged(v.getIsolatedKey() !== null || JSON.stringify([...v.getHiddenKeys()].sort()) !== JSON.stringify([...model.view.hiddenMeshKeys].sort()));
+              }}
               onCameraMoved={() => {
                 const v = viewerRef.current;
-                const saved = model.view.camera;
-                if (!v || !saved) return;
+                const base = baselineRef.current;
+                if (!v || !base) return;
                 const c = v.getCameraView();
-                const d = Math.hypot(c.position[0] - saved.position[0], c.position[1] - saved.position[1], c.position[2] - saved.position[2]) + Math.hypot(c.target[0] - saved.target[0], c.target[1] - saved.target[1], c.target[2] - saved.target[2]);
+                const d = Math.hypot(c.position[0] - base.position[0], c.position[1] - base.position[1], c.position[2] - base.position[2]) + Math.hypot(c.target[0] - base.target[0], c.target[1] - base.target[1], c.target[2] - base.target[2]);
                 setCameraChanged(d > 1e-3 * Math.max(1, v.getBounds().radius));
               }}
               overlay={
@@ -269,7 +283,7 @@ export function WorkspacePage({ modelId, onBack, onGoExport }: { modelId: string
                   <button type="button" className="btn btn--sm" onClick={() => pickCentre('place')} title="Adds a marker at the point in the centre of the viewport. A keyboard-friendly alternative to clicking." data-testid="add-at-centre"><Crosshair /> Add at centre</button>
                   <button type="button" className="btn btn--sm btn--icon" onClick={history.undo} disabled={!history.canUndo} aria-label="Undo annotation change" title="Undo (Ctrl+Z)" data-testid="undo"><Undo2 /></button>
                   <button type="button" className="btn btn--sm btn--icon" onClick={history.redo} disabled={!history.canRedo} aria-label="Redo annotation change" title="Redo (Ctrl+Shift+Z)" data-testid="redo"><Redo2 /></button>
-                  <button type="button" className="btn btn--sm" aria-pressed={showMarkers} onClick={() => setShowMarkers((v) => !v)}><MapPin /> {showMarkers ? 'Hide markers' : 'Show markers'}</button>
+                  <button type="button" className={`btn btn--sm ${showMarkers ? 'is-on' : ''}`} onClick={() => setShowMarkers((v) => !v)}><MapPin /> {showMarkers ? 'Hide markers' : 'Show markers'}</button>
                   {showMarkers && <button type="button" className="btn btn--sm" aria-pressed={showHidden} onClick={() => setShowHidden((v) => !v)} title="Show markers on the far side of the model as faint dashed circles">{showHidden ? <Eye /> : <EyeOff />} Markers behind</button>}
                 </div>
               }

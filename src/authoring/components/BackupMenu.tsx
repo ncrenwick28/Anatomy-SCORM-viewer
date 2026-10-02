@@ -40,7 +40,7 @@ export function BackupMenu() {
       const db = await getDb();
       const r = await createBackup(db);
       download(r.blob, r.filename);
-      toast.ok(`Backup downloaded: ${r.modelCount} model${r.modelCount === 1 ? '' : 's'}, ${fmtBytes(r.bytes)}. Keep it somewhere safe.`);
+      toast.ok(`Backup downloaded: ${r.modelCount} model${r.modelCount === 1 ? '' : 's'}, ${fmtBytes(r.bytes)}. Keep it somewhere safe.${r.repairs.length ? ` ${r.repairs.length} small text problem${r.repairs.length === 1 ? ' was' : 's were'} tidied in the backup copy (for example an empty label).` : ''}`);
     } catch (e) {
       toast.error(e instanceof BackupError ? e.message : `The backup could not be created: ${(e as Error).message}`);
     } finally {

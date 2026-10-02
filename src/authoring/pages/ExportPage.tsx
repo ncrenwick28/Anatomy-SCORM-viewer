@@ -39,7 +39,7 @@ export function ExportPage({ onGoLibrary }: { onGoLibrary: () => void }) {
   const state = useStudio();
   const { project } = state;
   const config = project.exportConfig;
-  const selected = useMemo(() => selectedModels(state), [state.models, state.project]); // eslint-disable-line react-hooks/exhaustive-deps
+  const selected = useMemo(() => selectedModels(state), [state.models, state.project]);
   const set = state.updateExportConfig;
   const [report, setReport] = useState<Awaited<ReturnType<typeof quickPreflight>> | null>(null);
   const [anchorProblems, setAnchorProblems] = useState<Record<string, { annotationId: string; label: string; reason: string }[]> | null>(null);
@@ -89,12 +89,12 @@ export function ExportPage({ onGoLibrary }: { onGoLibrary: () => void }) {
     await db.putAsset({ id, name, mime: file.type, size: file.size, blob: file, createdAt: nowIso() });
     const old = config.logoAssetId;
     set({ logoAssetId: id });
-    if (old) { await db.deleteAssets([old]); forgetAssetUrl(old); }
+    if (old) { await useStudio.getState().flush(); await db.deleteAssets([old]); forgetAssetUrl(old); }
   };
   const removeLogo = async () => {
     const old = config.logoAssetId;
     set({ logoAssetId: null });
-    if (old) { (await getDb()).deleteAssets([old]); forgetAssetUrl(old); }
+    if (old) { await useStudio.getState().flush(); await (await getDb()).deleteAssets([old]); forgetAssetUrl(old); }
   };
 
   const fullCheck = async () => {
@@ -267,7 +267,7 @@ export function ExportPage({ onGoLibrary }: { onGoLibrary: () => void }) {
               {warnings > 0 && <span className="chip chip--warn">{warnings} warning{warnings === 1 ? '' : 's'}</span>}
             </p>
             {issues.length > 0 && (
-              <ul className="issue-list" data-testid="issue-list">
+              <ul className="issue-list" data-testid="issue-list" tabIndex={0} aria-label="Check results">
                 {issues.map((i, k) => (
                   <li key={k} className={`issue issue--${i.level}`}>
                     <IssueIcon level={i.level} />
@@ -303,7 +303,7 @@ export function ExportPage({ onGoLibrary }: { onGoLibrary: () => void }) {
                   <a className="btn btn--sm" href={result.url} download={result.filename}><Download /> Download again</a>
                   <details className="info-details">
                     <summary>Package contents</summary>
-                    <ul className="file-list">{result.built.files.map((f) => <li key={f.path}><code>{f.path}</code> <span className="hint">{fmtBytes(f.size)}</span></li>)}</ul>
+                    <ul className="file-list" tabIndex={0} aria-label="Files in the package">{result.built.files.map((f) => <li key={f.path}><code>{f.path}</code> <span className="hint">{fmtBytes(f.size)}</span></li>)}</ul>
                   </details>
                   <p className="hint">Upload the ZIP to your LMS as a SCORM 1.2 activity. See “Help → LMS notes” for Moodle and Canvas. LMS compatibility has not been verified by this application.</p>
                 </div>

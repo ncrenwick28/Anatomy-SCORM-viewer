@@ -30,6 +30,10 @@ export function App() {
   const error = useStudio((s) => s.error);
   const init = useStudio((s) => s.init);
   const selectedCount = useStudio((s) => s.project.exportConfig.selectedModelIds.length);
+  const saveState = useStudio((s) => s.save.state);
+  const stale = useStudio((s) => s.staleElsewhere);
+  const resolveConflict = useStudio((s) => s.resolveConflict);
+  const reload = useStudio((s) => s.reload);
   const [route, setRoute] = useState<Route>(parse);
 
   useEffect(() => void init(), [init]);
@@ -100,6 +104,24 @@ export function App() {
           <BackupMenu />
         </div>
       </header>
+      {saveState === 'conflict' ? (
+        <div className="callout callout--error app-banner" role="alert" data-testid="conflict-banner">
+          <div>
+            <strong>This project was changed in another browser tab or window.</strong> To protect that work, this tab has stopped saving, and what you see here may be out of date.
+            <div className="btn-row" style={{ marginTop: 8 }}>
+              <button type="button" className="btn btn--sm btn--primary" onClick={() => void resolveConflict('reload')} data-testid="conflict-reload">Load the latest version (discard changes made in this tab)</button>
+              <button type="button" className="btn btn--sm" onClick={() => void resolveConflict('overwrite')} data-testid="conflict-overwrite">Overwrite with this tab’s version</button>
+            </div>
+          </div>
+        </div>
+      ) : stale ? (
+        <div className="callout callout--warn app-banner" role="status" data-testid="stale-banner">
+          <div>
+            <strong>This project was updated in another tab.</strong> Reload to see the latest changes before editing here.
+            <div className="btn-row" style={{ marginTop: 8 }}><button type="button" className="btn btn--sm" onClick={() => void reload()}>Reload the latest version</button></div>
+          </div>
+        </div>
+      ) : null}
       <main id="main" className={`app-main ${route.name === 'model' ? 'app-main--wide' : ''}`}>
         {route.name === 'library' && <LibraryPage onOpenModel={(id) => go(`#/model/${encodeURIComponent(id)}`)} onGoExport={() => go('#/export')} />}
         {route.name === 'model' && <WorkspacePage key={route.id} modelId={route.id} onBack={() => go('#/')} onGoExport={() => go('#/export')} />}

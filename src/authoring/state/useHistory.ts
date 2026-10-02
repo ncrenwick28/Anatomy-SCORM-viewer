@@ -39,7 +39,7 @@ export function useAnnotationHistory(modelId: string) {
       updateModel(modelId, (m) => ({ ...m, annotations: next }));
       bump((n) => n + 1);
     },
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
     [modelId, updateModel],
   );
 
@@ -51,7 +51,7 @@ export function useAnnotationHistory(modelId: string) {
     updateModel(modelId, (m) => ({ ...m, annotations: prev }));
     bump((n) => n + 1);
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [modelId, updateModel]);
 
   const redo = useCallback(() => {
@@ -62,7 +62,7 @@ export function useAnnotationHistory(modelId: string) {
     updateModel(modelId, (m) => ({ ...m, annotations: next }));
     bump((n) => n + 1);
     return true;
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [modelId, updateModel]);
 
   return { commit, undo, redo, canUndo: past.current.length > 0, canRedo: future.current.length > 0 };

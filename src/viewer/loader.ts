@@ -91,6 +91,7 @@ function describeLoadError(err: unknown): string {
       : 'The model file could not be loaded. Check your connection and try again.';
   }
   if (/Unexpected token|JSON/i.test(msg)) return 'The model file is damaged or is not a valid glTF/GLB file.';
+  if (/typed array|array length|buffer|out of range|offset|byteLength/i.test(msg)) return 'The model file is damaged: part of its data is missing or points beyond the end of the file. Re-export it from your modelling tool.';
   if (/DRACOLoader|draco/i.test(msg)) return 'The model uses Draco compression but the decoder could not be loaded.';
   return `The model could not be read: ${msg}`;
 }

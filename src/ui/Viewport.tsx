@@ -85,7 +85,7 @@ export function Viewport(props: ViewportProps) {
       viewerRef.current = null;
       if (props.viewerRef) props.viewerRef.current = null;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, []);
 
   // Load the model whenever the source changes.
@@ -118,7 +118,7 @@ export function Viewport(props: ViewportProps) {
         setLoad({ status: 'error', message: err instanceof ModelLoadError ? err.message : `The model could not be shown: ${(err as Error).message}` });
       });
     return () => ctrl.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+
   }, [props.sourceKey, props.source, retry]);
 
   // Keep the viewer in step with props.
@@ -140,6 +140,8 @@ export function Viewport(props: ViewportProps) {
   return (
     <div className={`vp ${props.className ?? ''}`} role="region" aria-label={props.ariaLabel ?? '3D model'}>
       <div ref={hostRef} className="vp__host" />
+      {/* Overlay toolbar comes first in the DOM so keyboard order matches the visual order (top toolbar, then view controls). */}
+      {props.overlay}
       {load.status === 'loading' && (
         <div className="av-loading" role="status" aria-live="polite">
           <strong>{stageText[load.progress.stage]}…</strong>
@@ -189,7 +191,6 @@ export function Viewport(props: ViewportProps) {
           </div>
         </div>
       )}
-      {props.overlay}
     </div>
   );
 }

@@ -1,4 +1,5 @@
 import type { Category, ExportConfig, ModelRecord, Project } from '../shared/types';
+import { newId } from '../shared/ids';
 import { DEFAULT_REGIONS, DEFAULT_SYSTEMS, defaultExportConfig } from '../shared/types';
 
 /**
@@ -148,6 +149,60 @@ export class ProjectStore {
     await done(tx);
   }
 
+  /**
+   * Writes changed records only if nobody else has saved them since this tab last read them (optimistic
+   * concurrency). All-or-nothing: on any conflict nothing is written. Each written record gets a new `rev`.
+   */
+  async commitChanges(changes: {
+    models: { record: ModelRecord; baseRev: string | undefined }[];
+    project?: { record: Project; baseRev: string | undefined };
+  }): Promise<{ ok: true; revs: Record<string, string>; projectRev?: string } | { ok: false; conflicts: string[]; projectConflict: boolean }> {
+    const tx = this.db.transaction(['models', 'meta'], 'readwrite');
+    const models = tx.objectStore('models');
+    const meta = tx.objectStore('meta');
+    const conflicts: string[] = [];
+    let projectConflict = false;
+    const existing = await Promise.all(changes.models.map((c) => wrap(models.get(c.record.id)) as Promise<ModelRecord | undefined>));
+    changes.models.forEach((c, i) => {
+      const stored = existing[i];
+      if ((stored?.rev ?? undefined) !== c.baseRev || (!stored && c.baseRev !== undefined)) conflicts.push(c.record.id);
+    });
+    if (changes.project) {
+      const stored = (await wrap(meta.get('project'))) as Project | undefined;
+      if ((stored?.rev ?? undefined) !== changes.project.baseRev) projectConflict = true;
+    }
+    if (conflicts.length || projectConflict) {
+      tx.abort();
+      await done(tx).catch(() => undefined);
+      return { ok: false, conflicts, projectConflict };
+    }
+    const revs: Record<string, string> = {};
+    for (const c of changes.models) {
+      const rev = newId('rev');
+      revs[c.record.id] = rev;
+      models.put({ ...c.record, rev });
+    }
+    let projectRev: string | undefined;
+    if (changes.project) {
+      projectRev = newId('rev');
+      meta.put({ ...changes.project.record, rev: projectRev }, 'project');
+    }
+    await done(tx);
+    return { ok: true, revs, projectRev };
+  }
+
+  /** Current stored revisions (used to resolve a conflict by overwriting). */
+  async getRevisions(ids: string[]): Promise<{ models: Record<string, string | undefined | null>; project: string | undefined }> {
+    const tx = this.db.transaction(['models', 'meta'], 'readonly');
+    const out: Record<string, string | undefined | null> = {};
+    for (const id of ids) {
+      const m = (await wrap(tx.objectStore('models').get(id))) as ModelRecord | undefined;
+      out[id] = m ? m.rev : null; // null = no longer exists
+    }
+    const p = (await wrap(tx.objectStore('meta').get('project'))) as Project | undefined;
+    return { models: out, project: p?.rev };
+  }
+
   // ───────── assets ─────────
   async putAsset(rec: AssetRecord): Promise<void> {
     const tx = this.db.transaction('assets', 'readwrite');
@@ -165,6 +220,34 @@ export class ProjectStore {
     const tx = this.db.transaction('assets', 'readwrite');
     for (const id of ids) tx.objectStore('assets').delete(id);
     await done(tx);
+  }
+
+  /**
+   * Removes assets that no model, thumbnail or logo refers to — leftovers from an import interrupted by a
+   * reload or crash. Only assets older than `graceMs` are touched so another tab's in-progress import is safe.
+   */
+  async sweepOrphanAssets(graceMs = 10 * 60 * 1000): Promise<number> {
+    const tx = this.db.transaction(['models', 'assets', 'meta'], 'readwrite');
+    const models = (await wrap(tx.objectStore('models').getAll())) as ModelRecord[];
+    const project = (await wrap(tx.objectStore('meta').get('project'))) as Project | undefined;
+    const keep = new Set<string>();
+    for (const m of models) {
+      m.assets.forEach((a) => keep.add(a.id));
+      if (m.thumbnailAssetId) keep.add(m.thumbnailAssetId);
+    }
+    if (project?.exportConfig.logoAssetId) keep.add(project.exportConfig.logoAssetId);
+    const cutoff = Date.now() - graceMs;
+    let removed = 0;
+    const store = tx.objectStore('assets');
+    const all = (await wrap(store.getAll())) as AssetRecord[];
+    for (const a of all) {
+      if (!keep.has(a.id) && Date.parse(a.createdAt) < cutoff) {
+        store.delete(a.id);
+        removed++;
+      }
+    }
+    await done(tx);
+    return removed;
   }
 
   async listAssetIds(): Promise<string[]> {

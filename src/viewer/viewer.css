@@ -63,6 +63,7 @@
   pointer-events: none;
 }
 .av-marker--flip .av-marker__label { left: auto; right: 40px; }
+.av-marker--above .av-marker__label { left: 50%; top: -34px; transform: translateX(-50%); }
 .av-marker:hover .av-marker__label,
 .av-marker:focus-visible .av-marker__label,
 .av-marker--selected .av-marker__label { display: block; }

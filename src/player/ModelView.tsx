@@ -77,21 +77,23 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
   const isConcealed = useCallback((a: Annotation) => selfStudy && !revealed.has(a.id), [selfStudy, revealed]);
   const labelFor = useCallback((a: Annotation, i: number) => (isConcealed(a) ? `Structure ${i + 1}` : a.label), [isConcealed]);
 
-  // An annotation counts as "viewed" once its label and description are on screen.
+  // An annotation counts as "viewed" only once its label and description are actually on screen: the detail
+  // card lives in the Annotations tab, so that tab must be showing (and the name must not be concealed).
   useEffect(() => {
-    if (!selectedId) return;
+    if (!selectedId || tab !== 'annotations') return;
     const a = annotations.find((x) => x.id === selectedId);
     if (a && !isConcealed(a)) tracker.viewAnnotation(model.id, a.id);
-  }, [selectedId, isConcealed, annotations, tracker, model.id]);
+  }, [selectedId, tab, isConcealed, annotations, tracker, model.id]);
 
   const select = useCallback(
     (id: string | null, fromList = false) => {
       setSelectedId(id);
-      if (id && f.annotationList !== false) setTab('annotations');
+      // The detail card is in the Annotations tab (with or without the list), so always show it.
+      if (id) setTab('annotations');
       if (id && fromList) viewerRef.current?.ensureMarkerVisible(id);
       if (id) requestAnimationFrame(() => detailWrapRef.current?.scrollIntoView({ block: 'nearest', behavior: 'smooth' }));
     },
-    [f.annotationList],
+    [],
   );
 
   const selectedIdx = selectedId ? annotations.findIndex((a) => a.id === selectedId) : -1;
@@ -112,7 +114,7 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
     <div className="pl-vp-tools">
       {hasAnnotations && (
         <>
-          <button type="button" className="btn btn--sm" aria-pressed={showMarkers} onClick={() => setShowMarkers((v) => !v)}>
+          <button type="button" className={`btn btn--sm ${showMarkers ? 'is-on' : ''}`} onClick={() => setShowMarkers((v) => !v)}>
             <MapPin /> {showMarkers ? 'Hide annotations' : 'Show annotations'}
           </button>
           {showMarkers && (

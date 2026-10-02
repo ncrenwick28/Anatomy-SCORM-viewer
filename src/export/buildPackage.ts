@@ -101,7 +101,7 @@ export async function buildScormPackage(input: BuildInput, onProgress?: (done: n
       format: m.format,
       files,
       view: m.view,
-      annotations: m.annotations,
+      annotations: m.annotations.map((a) => ({ ...a, label: a.label.trim(), category: a.category.trim() })),
       meshLabels: m.meshLabels,
       stats: { triangles: m.stats.triangles, meshCount: m.stats.meshCount, totalBytes: m.stats.totalBytes },
     });
@@ -119,7 +119,9 @@ export async function buildScormPackage(input: BuildInput, onProgress?: (done: n
 
   const usedRegionIds = new Set(packageModels.flatMap((m) => m.regionIds));
   const usedSystemIds = new Set(packageModels.flatMap((m) => m.systemIds));
-  const hashSource = JSON.stringify(packageModels.map((m) => [m.id, m.title, m.annotations.map((a) => [a.id, a.label, a.required])]));
+  // Progress is stored by position, so the hash covers exactly what fixes those positions: which models and
+  // annotations exist and in what order. Renaming or re-describing things does not invalidate saved progress.
+  const hashSource = JSON.stringify(packageModels.map((m) => [m.id, m.annotations.map((a) => a.id)]));
   const contentHash = shortHash(hashSource);
   const content: PackageContent = {
     schema: 1,

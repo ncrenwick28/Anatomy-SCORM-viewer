@@ -70,6 +70,18 @@ export function computeCompletion(rule: CompletionRule, models: CompletionModel[
   return { rule, complete, modelsOpened, modelsTotal, annotationsViewed, annotationsRequired, fraction };
 }
 
+/** Union of two progress records (progress only ever grows, so merging is always safe). */
+export function mergeProgress(a: Progress, b: Progress, modelOrder: string[]): Progress {
+  const opened = new Set([...a.opened, ...b.opened]);
+  const viewed: Record<string, string[]> = {};
+  for (const id of new Set([...Object.keys(a.viewed), ...Object.keys(b.viewed)])) viewed[id] = [...new Set([...(a.viewed[id] ?? []), ...(b.viewed[id] ?? [])])];
+  return {
+    opened: [...modelOrder.filter((id) => opened.has(id)), ...[...opened].filter((id) => !modelOrder.includes(id))],
+    viewed,
+    lastModelId: a.lastModelId ?? b.lastModelId,
+  };
+}
+
 export function markOpened(p: Progress, modelId: string): Progress {
   if (p.opened.includes(modelId) && p.lastModelId === modelId) return p;
   return {

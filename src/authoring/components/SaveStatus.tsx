@@ -11,6 +11,7 @@ export function SaveStatus() {
   if (save.state === 'saving') (icon = <Loader2 className="spin-icon" aria-hidden="true" />), (text = 'Saving…'), (cls = 'busy');
   else if (save.state === 'dirty') (icon = <PencilLine aria-hidden="true" />), (text = 'Unsaved changes'), (cls = 'dirty');
   else if (save.state === 'error') (icon = <AlertTriangle aria-hidden="true" />), (text = 'Save failed'), (cls = 'error');
+  else if (save.state === 'conflict') (icon = <AlertTriangle aria-hidden="true" />), (text = 'Not saved: changed in another tab'), (cls = 'error');
   const time = save.lastSavedAt ? new Date(save.lastSavedAt).toLocaleTimeString('en-GB', { hour: '2-digit', minute: '2-digit' }) : null;
   return (
     <div className={`save-status save-status--${cls}`} role="status" aria-live="polite" data-testid="save-status" data-state={save.state}>

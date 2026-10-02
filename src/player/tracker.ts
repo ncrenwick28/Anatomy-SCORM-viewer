@@ -1,4 +1,4 @@
-import { computeCompletion, emptyProgress, markOpened, markViewed, type CompletionSummary, type Progress } from '../shared/completion';
+import { computeCompletion, emptyProgress, markOpened, markViewed, mergeProgress, type CompletionSummary, type Progress } from '../shared/completion';
 import type { PackageContent } from '../shared/content';
 import { decodeProgress, encodeProgress, type CodecModel } from '../shared/progressCodec';
 import { Scorm12Client, findApi, formatScorm12Time, type Scorm12Api } from './scorm12';
@@ -65,6 +65,8 @@ export class ProgressTracker {
   private progress: Progress = emptyProgress();
   private completed = false;
   private completionWritten = false;
+  /** lesson_status 'incomplete' still has to reach the LMS (retried by save() until it does). */
+  private needsIncomplete = false;
   private resumed = false;
   private contentChanged = false;
   private lastSavedAt: number | null = null;
@@ -146,7 +148,35 @@ export class ProgressTracker {
       }
     }
     if (this.mode === 'lms' && (status === 'not attempted' || status === '' || status === 'browsed')) {
-      if (!this.completed) this.write('cmi.core.lesson_status', 'incomplete');
+      this.needsIncomplete = !this.completed;
+    }
+    // If an earlier session could not reach the LMS, progress was also kept locally; merge it (progress only grows).
+    const local = this.readLocal();
+    if (local && local.matched) {
+      const merged = mergeProgress(this.progress, local.progress, this.content.models.map((m) => m.id));
+      if (JSON.stringify(merged) !== JSON.stringify(this.progress)) {
+        this.progress = merged;
+        this.resumed = this.resumed || merged.opened.length > 0;
+      }
+      if (local.completed && !this.completed) {
+        this.completed = true;
+        this.completionWritten = false; // make sure the LMS hears about it
+      }
+    }
+  }
+
+  private readLocal(): { progress: Progress; completed: boolean; matched: boolean } | null {
+    const st = this.storage;
+    if (!st) return null;
+    try {
+      const raw = st.getItem(this.storageKey);
+      if (!raw) return null;
+      const saved = JSON.parse(raw) as { data?: string; completed?: boolean };
+      const decoded = saved.data ? decodeProgress(saved.data, this.content.contentHash, this.codecModels) : null;
+      if (!decoded) return null;
+      return { progress: decoded.progress, completed: !!saved.completed && decoded.contentMatched, matched: decoded.contentMatched };
+    } catch {
+      return null;
     }
   }
 
@@ -260,6 +290,10 @@ export class ProgressTracker {
       return;
     }
     let ok = true;
+    if (this.needsIncomplete && !this.completed) {
+      if (this.write('cmi.core.lesson_status', 'incomplete')) this.needsIncomplete = false;
+      else ok = false;
+    }
     ok = this.write('cmi.suspend_data', encodeProgress(this.content.contentHash, this.codecModels, this.progress)) && ok;
     if (this.progress.lastModelId) ok = this.write('cmi.core.lesson_location', this.progress.lastModelId.slice(0, ID_LIMIT)) && ok;
     ok = this.write('cmi.core.session_time', formatScorm12Time(this.now() - this.startedAt)) && ok;

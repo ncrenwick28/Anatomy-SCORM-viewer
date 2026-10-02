@@ -39,11 +39,11 @@ export function findByKey(root: THREE.Object3D, key: string): THREE.Object3D | n
 /** Resolves the mesh an annotation is anchored to (key first, then a unique-name fallback). */
 export function resolveAnchorMesh(root: THREE.Object3D, anchor: Pick<AnnotationAnchor, 'meshKey' | 'meshName'>): THREE.Mesh | null {
   const byKey = findByKey(root, anchor.meshKey);
-  if (byKey && (byKey as THREE.Mesh).isMesh && (!anchor.meshName || nodeName(byKey) === anchor.meshName)) return byKey as THREE.Mesh;
+  if (byKey && (byKey as THREE.Mesh).isMesh && (!anchor.meshName || nodeName(byKey).slice(0, 300) === anchor.meshName)) return byKey as THREE.Mesh;
   if (anchor.meshName) {
     const matches: THREE.Mesh[] = [];
     root.traverse((o) => {
-      if ((o as THREE.Mesh).isMesh && nodeName(o) === anchor.meshName) matches.push(o as THREE.Mesh);
+      if ((o as THREE.Mesh).isMesh && nodeName(o).slice(0, 300) === anchor.meshName) matches.push(o as THREE.Mesh);
     });
     if (matches.length === 1) return matches[0];
   }
@@ -78,7 +78,7 @@ export function anchorFromHit(root: THREE.Object3D, hit: THREE.Intersection): An
   const normal = hit.face ? hit.face.normal.clone() : new THREE.Vector3(0, 1, 0);
   return {
     meshKey: key,
-    meshName: nodeName(mesh),
+    meshName: nodeName(mesh).slice(0, 300),
     position: [local.x, local.y, local.z],
     normal: [normal.x, normal.y, normal.z],
   };

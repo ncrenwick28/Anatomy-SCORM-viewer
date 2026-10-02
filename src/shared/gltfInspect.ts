@@ -12,7 +12,7 @@ export class ModelFileError extends Error {
   }
 }
 
-// eslint-disable-next-line @typescript-eslint/no-explicit-any
+
 export type GltfJson = Record<string, any>;
 
 const GLB_MAGIC = 0x46546c67; // "glTF"
@@ -152,10 +152,12 @@ export function assertSupported(summary: GltfSummary): void {
   }
 }
 
-export interface CompanionMatch {
-  /** uri (as written in the .gltf) → name of the supplied file that satisfies it. */
-  matched: Record<string, string>;
+export interface CompanionMatch<T> {
+  /** uri (as written in the .gltf) → the supplied file that satisfies it. */
+  matched: Record<string, T>;
   missing: string[];
+  /** URIs for which more than one supplied file fits and nothing can tell them apart. */
+  ambiguous: { uri: string; candidates: string[] }[];
 }
 
 function decodeUri(uri: string): string {
@@ -167,24 +169,44 @@ function decodeUri(uri: string): string {
 }
 
 const baseName = (p: string) => p.split(/[\\/]/).pop() ?? p;
+const normPath = (p: string) => p.replace(/\\/g, '/').replace(/^\.\//, '').toLowerCase();
 
 /**
- * Matches the external URIs referenced by a .gltf to the files the user supplied. Matching tries the
- * full relative path first (useful for folder uploads), then the bare file name, case-insensitively.
+ * Matches the external URIs referenced by a .gltf to the files the user supplied.
+ *
+ * 1. The relative path inside the .gltf is compared with the supplied files' folder paths (folder uploads
+ *    carry them), so `textures/a/diffuse.png` and `textures/b/diffuse.png` are told apart.
+ * 2. Otherwise the bare file name is used, but only if exactly one supplied file has it. Several files with
+ *    the same name and no folder information are reported as ambiguous rather than guessed.
+ *
+ * The matched *file object* is returned so callers never have to look it up by name again.
  */
-export function matchCompanions(uris: string[], supplied: { name: string; path?: string }[]): CompanionMatch {
-  const matched: Record<string, string> = {};
+export function matchCompanions<T extends { name: string; path?: string }>(uris: string[], supplied: T[]): CompanionMatch<T> {
+  const matched: Record<string, T> = {};
   const missing: string[] = [];
+  const ambiguous: CompanionMatch<T>['ambiguous'] = [];
   for (const uri of uris) {
-    const decoded = decodeUri(uri).replace(/^\.\//, '');
-    const wantedBase = baseName(decoded).toLowerCase();
-    const byPath = supplied.find((f) => f.path && f.path.replace(/\\/g, '/').toLowerCase().endsWith(decoded.replace(/\\/g, '/').toLowerCase()));
-    const byName = supplied.find((f) => baseName(f.name).toLowerCase() === wantedBase);
-    const hit = byPath ?? byName;
-    if (hit) matched[uri] = hit.name;
-    else missing.push(decoded);
+    const decoded = normPath(decodeUri(uri));
+    const wantedBase = baseName(decoded);
+    const byPath = supplied.filter((f) => {
+      if (!f.path) return false;
+      const fp = normPath(f.path);
+      return fp === decoded || fp.endsWith('/' + decoded);
+    });
+    if (byPath.length === 1) {
+      matched[uri] = byPath[0];
+      continue;
+    }
+    if (byPath.length > 1) {
+      ambiguous.push({ uri, candidates: byPath.map((f) => f.path ?? f.name) });
+      continue;
+    }
+    const byName = supplied.filter((f) => baseName(f.name).toLowerCase() === wantedBase);
+    if (byName.length === 1) matched[uri] = byName[0];
+    else if (byName.length > 1) ambiguous.push({ uri, candidates: byName.map((f) => f.path ?? f.name) });
+    else missing.push(decodeUri(uri).replace(/^\.\//, ''));
   }
-  return { matched, missing };
+  return { matched, missing, ambiguous };
 }
 
 /** Lower-case, ASCII-only, filesystem- and URL-safe file name; unique within `taken`. */

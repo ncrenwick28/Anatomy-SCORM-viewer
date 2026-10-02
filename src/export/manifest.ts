@@ -6,7 +6,7 @@ export function xmlEscape(s: string): string {
 
 /** Removes characters that are illegal in XML 1.0 documents. */
 function stripIllegal(s: string): string {
-  // eslint-disable-next-line no-control-regex
+
   return s.replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f￾￿]/g, '');
 }
 

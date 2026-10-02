@@ -140,3 +140,21 @@ export async function makeDracoGlb(): Promise<Uint8Array> {
   const io = new WebIO().registerExtensions([KHRDracoMeshCompression]).registerDependencies({ 'draco3d.encoder': await draco3d.createEncoderModule() });
   return io.writeBinary(doc);
 }
+
+/** A glTF whose two textures have the same file name in different folders (textures/a/ and textures/b/). */
+export async function makeSameNameTextureGltf(): Promise<{ gltf: Uint8Array; resources: Record<string, Uint8Array>; jsonName: string }> {
+  const doc = new Document();
+  const buffer = doc.createBuffer('main');
+  const scene = doc.createScene('scene');
+  const colours: [string, [number, number, number]][] = [['textures/a/diffuse.png', [200, 40, 40]], ['textures/b/diffuse.png', [40, 40, 200]]];
+  colours.forEach(([uri, rgb], i) => {
+    const tex = doc.createTexture(`tex-${i}`).setImage(makePng(4, 4, rgb)).setMimeType('image/png').setURI(uri);
+    const mat = doc.createMaterial(`mat-${i}`).setBaseColorTexture(tex);
+    const pos = doc.createAccessor().setType('VEC3').setArray(new Float32Array([i, 0, 0, i + 1, 0, 0, i, 1, 0])).setBuffer(buffer);
+    const uv = doc.createAccessor().setType('VEC2').setArray(new Float32Array([0, 0, 1, 0, 0, 1])).setBuffer(buffer);
+    const prim = doc.createPrimitive().setAttribute('POSITION', pos).setAttribute('TEXCOORD_0', uv).setMaterial(mat);
+    scene.addChild(doc.createNode(`Lobe ${i}`).setMesh(doc.createMesh(`Lobe ${i}`).addPrimitive(prim)));
+  });
+  const { json, resources } = await new WebIO().writeJSON(doc, { basename: 'organ' });
+  return { gltf: new TextEncoder().encode(JSON.stringify(json)), resources, jsonName: 'organ.gltf' };
+}

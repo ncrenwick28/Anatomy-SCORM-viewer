@@ -9,9 +9,9 @@ import type { Progress } from './completion';
  *
  *   "a1|<hash>|<last>|<openedHex>|<idx>:<hex>,<idx>:<hex>"
  *
- * `hash` identifies the package contents. If a re-uploaded package has different content the stored
- * bit positions may no longer match, so annotation progress is discarded (completion status already
- * recorded by the LMS is unaffected).
+ * `hash` identifies which models and annotations exist and in what order (see buildPackage). If a re-uploaded
+ * package has a different structure the stored bit positions may no longer match, so *all* saved progress is
+ * discarded (the completion status already recorded by the LMS is unaffected).
  */
 
 export interface CodecModel {

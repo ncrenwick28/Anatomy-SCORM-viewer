@@ -106,6 +106,7 @@ export const modelRecordSchema = z.object({
   meshLabels: z.record(z.string().max(200), z.string().max(120)),
   createdAt: isoDate,
   updatedAt: isoDate,
+  rev: z.string().max(60).optional(),
 });
 
 export const categorySchema = z.object({ id: z.string().min(1).max(80), name: z.string().min(1).max(60) });

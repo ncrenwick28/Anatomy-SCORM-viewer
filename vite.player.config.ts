@@ -1,7 +1,7 @@
 import { defineConfig } from 'vite';
 import react from '@vitejs/plugin-react';
 import { readFileSync } from 'node:fs';
-import { copyDracoDecoder, dracoUrlFix } from './build/vitePlugins';
+import { copyDracoDecoder, dracoUrlFix } from './build/vitePlugins.ts';
 import { resolve } from 'node:path';
 
 // Builds the student player as a single classic (non-module) script plus one stylesheet.

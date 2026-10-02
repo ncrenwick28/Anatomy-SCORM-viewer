@@ -41,6 +41,7 @@ export function HelpPage() {
             <ul>
               <li>Clearing site data, using a private window, or switching browser or computer means the work is <strong>not there</strong>. Use <strong>Backup → Download project backup</strong> regularly; it produces a ZIP of everything. “Restore from backup” can add the models to the current project or replace it.</li>
               <li>The browser decides how much space is available. The Backup menu shows usage, and whether the browser has agreed to keep the data (persistent storage).</li>
+              <li>You can open the project in several tabs, but only one should be edited at a time. If another tab saved first, this tab stops saving, says so, and lets you load the latest version or overwrite it on purpose, so work is never overwritten silently.</li>
               <li>The project is tied to the web address it was opened from. A different address (for example <code>localhost:5173</code> versus a deployed copy) has its own, separate storage.</li>
             </ul>
           </section>

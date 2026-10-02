@@ -1,7 +1,4 @@
-import { spawnSync } from 'node:child_process';
-import { mkdtempSync, writeFileSync } from 'node:fs';
-import { tmpdir } from 'node:os';
-import { join } from 'node:path';
+import { DOMParser } from '@xmldom/xmldom';
 import { describe, expect, it } from 'vitest';
 import { buildScormPackage, type AssetData } from '../../src/export/buildPackage';
 import { generateManifest12, xmlEscape } from '../../src/export/manifest';
@@ -59,15 +56,27 @@ describe('SCORM 1.2 package builder', () => {
     expect(built.bytes).toBe(built.blob.size);
   });
 
-  it('produces a well-formed manifest even with hostile characters in the title', async () => {
+  it('produces a well-formed manifest with the IMS CP structure, even with hostile characters in the title', async () => {
     const { files } = await build([mk('a', 'Heart')]);
-    const dir = mkdtempSync(join(tmpdir(), 'manifest-'));
-    const path = join(dir, 'imsmanifest.xml');
-    writeFileSync(path, files.get('imsmanifest.xml')!);
-    const r = spawnSync('xmllint', ['--noout', path], { encoding: 'utf8' });
-    if (r.error) return; // xmllint not installed: structural assertions above still apply
-    expect(r.status, r.stderr).toBe(0);
-    expect(new TextDecoder().decode(files.get('imsmanifest.xml')!)).toContain('Thorax &amp; &quot;heart&quot; &lt;demo&gt;');
+    const xml = new TextDecoder().decode(files.get('imsmanifest.xml')!);
+    const problems: string[] = [];
+    const doc = new DOMParser({ onError: (level: string, msg: string) => problems.push(`${level}: ${msg}`) }).parseFromString(xml, 'text/xml');
+    expect(problems).toEqual([]);
+    const root = doc.documentElement!;
+    expect(root.localName).toBe('manifest');
+    expect(root.namespaceURI).toBe('http://www.imsproject.org/xsd/imscp_rootv1p1p2');
+    expect(root.getAttribute('identifier')).toMatch(/^[A-Za-z][A-Za-z0-9_.-]*$/);
+    // Child order required by the content-packaging schema: metadata, organizations, resources
+    const kids = Array.from(root.childNodes).filter((n) => n.nodeType === 1).map((n) => (n as unknown as { localName: string }).localName);
+    expect(kids).toEqual(['metadata', 'organizations', 'resources']);
+    const title = doc.getElementsByTagName('title')[0].textContent;
+    expect(title).toBe('Thorax & "heart" <demo>'); // escaped on the way in, intact when parsed
+    const res = doc.getElementsByTagName('resource')[0];
+    expect(res.getAttribute('adlcp:scormtype')).toBe('sco');
+    expect(res.getAttribute('href')).toBe('index.html');
+    const orgDefault = doc.getElementsByTagName('organizations')[0].getAttribute('default');
+    expect(doc.getElementsByTagName('organization')[0].getAttribute('identifier')).toBe(orgDefault);
+    expect(doc.getElementsByTagName('item')[0].getAttribute('identifierref')).toBe(res.getAttribute('identifier'));
   });
 
   it('includes only the selected models and their assets', async () => {
@@ -119,6 +128,25 @@ describe('SCORM 1.2 package builder', () => {
     expect(html).not.toMatch(/https?:\/\//);
     expect(html).toContain('&lt;b&gt;title&lt;/b&gt;');
     expect(html).toContain('lang="en-GB"');
+  });
+
+  it('trims annotation labels and categories in the shipped content', async () => {
+    const m = mk('a', 'Heart');
+    m.annotations[0].label = '  Apex  ';
+    m.annotations[0].category = ' Landmark ';
+    const { built } = await build([m]);
+    expect(built.content.models[0].annotations[0].label).toBe('Apex');
+    expect(built.content.models[0].annotations[0].category).toBe('Landmark');
+  });
+
+  it('keeps the content hash when titles change but changes it when annotations are added or reordered', async () => {
+    const a = await build([mk('a', 'Heart')]);
+    const renamed = await build([mk('a', 'Heart (renamed)')]);
+    expect(renamed.built.content.contentHash).toBe(a.built.content.contentHash);
+    const m2 = mk('a', 'Heart');
+    m2.annotations = [{ ...m2.annotations[0], id: 'z-1' }, { ...m2.annotations[0], id: 'z-2' }];
+    const m3 = { ...m2, annotations: [...m2.annotations].reverse() };
+    expect((await build([m2])).built.content.contentHash).not.toBe((await build([m3])).built.content.contentHash);
   });
 
   it('manifest escaping and structure', () => {

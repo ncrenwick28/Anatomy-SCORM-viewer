@@ -7,9 +7,11 @@
 - A package opened by double-clicking `index.html` (file://) cannot load models because browsers block `fetch` from the file system. Use a web server (`npm run serve:package`) or an LMS.
 - Full screen uses the browser Fullscreen API. LMS iframes that do not allow it fall back to filling the frame.
 - Completion "viewed" is judged by the information panel having shown the annotation, not by time spent reading.
-- Progress is stored as bit masks keyed to the model and annotation order of one build. If a package is re-exported with different content and re-uploaded over an existing attempt, saved annotation progress is discarded (the LMS completion status is kept).
+- Progress is stored as bit masks keyed to the order of models and annotations in one build. If a package is re-exported with models or annotations added, removed or re-ordered and uploaded over an existing attempt, **all saved progress for that attempt is discarded** (opened models and viewed annotations), and the learner is told; the LMS completion status already recorded is kept. Renaming or re-describing items does not discard progress.
+- Progress kept in the browser (the fallback when the LMS cannot be reached) is per device.
 
 **Authoring**
+- Several tabs/windows can open the same project. Saves use optimistic concurrency: a tab that did not see another tab's newer save refuses to overwrite it and shows a banner offering to load the latest version or to overwrite deliberately. There is no live co-editing.
 - Storage is the browser's IndexedDB: per browser profile and per web address, subject to the browser's quota and eviction rules. Backups are the portability and recovery mechanism. There is no sync, login or multi-user editing.
 - Backups are read into memory; very large projects (multi-GB) may exceed what a browser tab can hold.
 - Import supports GLB/glTF 2.0 only (Draco and Meshopt compression included). KTX2/Basis textures, glTF 1.0, OBJ, FBX, STL, PLY and other formats are not supported. Animations are ignored; skinned meshes are shown in rest pose.

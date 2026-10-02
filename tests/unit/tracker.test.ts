@@ -302,3 +302,47 @@ describe('standalone mode', () => {
     expect(t.getState().completed).toBe(true);
   });
 });
+
+describe('review fixes: status recovery and local mirror', () => {
+  it("re-sends lesson_status 'incomplete' after the LMS recovers (it was rejected at launch)", () => {
+    const store: Record<string, string> = { 'cmi.core.lesson_status': 'not attempted' };
+    let failing = true;
+    let err = '0';
+    const api: Scorm12Api = {
+      LMSInitialize: () => 'true',
+      LMSFinish: () => 'true',
+      LMSGetValue: (n) => ((err = '0'), store[n] ?? ''),
+      LMSSetValue: (n, v) => (failing ? ((err = '391'), 'false') : ((err = '0'), (store[n] = v), 'true')),
+      LMSCommit: () => (failing ? ((err = '391'), 'false') : ((err = '0'), 'true')),
+      LMSGetLastError: () => err,
+      LMSGetErrorString: () => 'General commit failure',
+      LMSGetDiagnostic: () => '',
+    };
+    const t = new ProgressTracker(content('open-all'), { api, storage: null, retryMs: 3000 });
+    t.start();
+    t.openModel('m1');
+    vi.advanceTimersByTime(1500);
+    expect(store['cmi.core.lesson_status']).toBe('not attempted');
+    failing = false;
+    vi.advanceTimersByTime(4000);
+    expect(store['cmi.core.lesson_status']).toBe('incomplete');
+    expect(t.getState().health).toBe('ok');
+  });
+
+  it('merges progress kept locally when the LMS lost it, and sends it to the LMS', () => {
+    const local = mem();
+    const first = new ProgressTracker(content('open-all'), { api: null, storage: local });
+    first.start();
+    first.openModel('m1');
+    first.viewAnnotation('m1', 'a1');
+    first.terminate();
+    const api = asApi(lms({ entry: 'resume', lesson_status: 'incomplete' })); // the LMS has no suspend_data
+    const t = new ProgressTracker(content('open-all'), { api, storage: local });
+    t.start();
+    expect(t.getState().progress.opened).toEqual(['m1']);
+    expect(t.getState().progress.viewed).toEqual({ m1: ['a1'] });
+    vi.advanceTimersByTime(1500);
+    expect(api.cmi.suspend_data).toMatch(/^a1\|h1\|/);
+    expect(api.rejected).toEqual([]);
+  });
+});

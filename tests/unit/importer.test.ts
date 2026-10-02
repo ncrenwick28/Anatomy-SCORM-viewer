@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { planImports, prepareAssets, humaniseFileName } from '../../src/storage/importer';
 import { LIMITS } from '../../src/shared/types';
-import { fileOf, makeGlbBytes, makeGltfFiles } from '../fixtures/makeModels';
+import { fileOf, makeGlbBytes, makeGltfFiles, makeSameNameTextureGltf } from '../fixtures/makeModels';
 
 describe('importer', () => {
   it('accepts a valid GLB and humanises its title', async () => {
@@ -63,6 +63,30 @@ describe('importer', () => {
     const { gltf, resources, jsonName } = await makeGltfFiles();
     const plan = await planImports([{ file: fileOf(gltf, jsonName) }, ...Object.keys(resources).map((n) => ({ file: fileOf(resources[n], n) })), { file: fileOf(new Uint8Array(4), 'stray.png') }]);
     expect(plan.ignored.some((i) => i.name === 'stray.png')).toBe(true);
+  });
+
+  it('keeps same-named textures from different folders apart (folder upload) and refuses to guess otherwise', async () => {
+    const { gltf, resources, jsonName } = await makeSameNameTextureGltf();
+    expect(Object.keys(resources).sort()).toEqual(['organ.bin', 'textures/a/diffuse.png', 'textures/b/diffuse.png']);
+    const mk = (n: string) => ({ file: fileOf(resources[n], n.split('/').pop()!), path: `organ/${n}` });
+    const withFolders = await planImports([{ file: fileOf(gltf, jsonName), path: `organ/${jsonName}` }, mk('organ.bin'), mk('textures/b/diffuse.png'), mk('textures/a/diffuse.png')]);
+    const c = withFolders.candidates[0];
+    expect(c.errors).toEqual([]);
+    expect(withFolders.ignored).toEqual([]);
+    const prepared = await prepareAssets(c);
+    const names = prepared.assets.map((a) => a.ref.name);
+    expect(new Set(names).size).toBe(names.length); // diffuse.png and diffuse-2.png, never one file stored twice
+    const json = JSON.parse(await prepared.assets[0].blob.text());
+    const byName = (n: string) => prepared.assets.find((a) => a.ref.name === n)!;
+    // Each image URI now names the file whose bytes equal the ORIGINAL texture it referred to.
+    for (const [i, uri] of ['textures/a/diffuse.png', 'textures/b/diffuse.png'].entries()) {
+      const stored = new Uint8Array(await byName(json.images[i].uri).blob.arrayBuffer());
+      expect(Buffer.from(stored).equals(Buffer.from(resources[uri]))).toBe(true);
+    }
+    // Without folder information the two files cannot be told apart: report it
+    const flat = await planImports([{ file: fileOf(gltf, jsonName) }, { file: fileOf(resources['organ.bin'], 'organ.bin') }, { file: fileOf(resources['textures/a/diffuse.png'], 'diffuse.png') }, { file: fileOf(resources['textures/b/diffuse.png'], 'diffuse.png') }]);
+    expect(flat.candidates[0].errors.join(' ')).toMatch(/2 selected files could be it/);
+    expect(flat.candidates[0].errors.join(' ')).toMatch(/Choose a folder/);
   });
 
   it('warns about large models and refuses ones above the hard limit', async () => {

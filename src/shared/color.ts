@@ -65,10 +65,12 @@ export interface AccentTheme {
 /** Derives the CSS colour variables for a chosen accent colour, guaranteeing readable text on it. */
 export function accentTheme(accentInput: string): AccentTheme {
   const accent = normaliseHex(accentInput);
+  const soft = shade(accent, 0.9);
   let ink = accent;
   let n = 0;
-  while (contrastRatio(ink, '#ffffff') < 4.5 && n++ < 30) ink = shade(ink, -0.06);
-  return { accent, ink, contrast: readableTextOn(accent), soft: shade(accent, 0.9), softBorder: shade(accent, 0.7) };
+  // The "ink" is used as text on white and on the soft tint (chips, selected rows), so it must reach 4.5:1 on both.
+  while ((contrastRatio(ink, '#ffffff') < 4.5 || contrastRatio(ink, soft) < 4.5) && n++ < 40) ink = shade(ink, -0.06);
+  return { accent, ink, contrast: readableTextOn(accent), soft, softBorder: shade(accent, 0.7) };
 }
 
 export function themeStyle(accent: string): Record<string, string> {

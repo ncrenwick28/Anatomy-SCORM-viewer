@@ -51,6 +51,7 @@ export class ViewerCore {
   private wrapper = new THREE.Group();
   private box = new THREE.Box3();
   private radius = 1;
+  private boundsCenter = new THREE.Vector3();
   private structure: StructureNode[] = [];
   private initialView: CameraView | null = null;
   private defaultView: CameraView | null = null;
@@ -177,7 +178,8 @@ export class ViewerCore {
     this.box = new THREE.Box3().setFromObject(result.root);
     const sphere = this.box.getBoundingSphere(new THREE.Sphere());
     this.radius = Math.max(sphere.radius, 1e-4);
-    this.controls.minDistance = this.radius * 0.04;
+    this.boundsCenter.copy(sphere.center);
+    this.controls.minDistance = this.radius * 0.08;
     this.controls.maxDistance = this.radius * 12;
     this.hiddenKeys.clear();
     this.isolatedKey = null;
@@ -345,9 +347,11 @@ export class ViewerCore {
   }
 
   private updateClipping(): void {
-    const dist = this.camera.position.distanceTo(this.controls.target);
-    const near = Math.max(this.radius * 0.002, dist - this.radius * 1.6);
-    const far = (dist + this.radius * 2.2) * 1.05;
+    // Clip planes come from the distance to the model's bounding sphere, not to the orbit target: panning moves
+    // the target away from the model's centre, and a target-based far plane would then cut off the far side.
+    const d = this.camera.position.distanceTo(this.boundsCenter);
+    const near = Math.max(this.radius * 0.001, (d - this.radius) * 0.9);
+    const far = d + this.radius * 1.15;
     if (Math.abs(this.camera.near - near) > 1e-9 || Math.abs(this.camera.far - far) > 1e-9) {
       this.camera.near = near;
       this.camera.far = far;
@@ -855,7 +859,7 @@ export class ViewerCore {
         ghost: occluded,
       });
     });
-    this.markers.render(display, this.width);
+    this.markers.render(display, this.width, this.height);
     const sig = Object.entries(states)
       .map(([k, v]) => k + v)
       .join('|');
