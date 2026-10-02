@@ -340,30 +340,37 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     await expect(sco.locator('.ann-flag--ok')).toHaveCount(2);
   });
 
-  test('10d. LMS failures: no API, failed initialise, failing writes and a throwing LMS never block the learner', async ({ page }) => {
+  test('10d. LMS failures: no API, failed initialise, failing writes and a throwing LMS never block the learner', async ({ browser }) => {
+    // Each scenario is a fresh browser profile, as if launched from a different device.
+    const launch = async (qs: string) => {
+      const ctx = await browser.newContext();
+      const page = await ctx.newPage();
+      await page.goto(`${origin()}/__lms/harness.html?${qs}`);
+      return { ctx, page, sco: page.frameLocator('#sco') };
+    };
     // No API: honest standalone mode
-    await page.goto(`${origin()}/__lms/harness.html?mode=none`);
-    let sco = page.frameLocator('#sco');
-    await expect(sco.getByTestId('tracking-status')).toHaveAttribute('data-mode', 'standalone');
+    let s = await launch('mode=none');
+    await expect(s.sco.getByTestId('tracking-status')).toHaveAttribute('data-mode', 'standalone');
+    await s.ctx.close();
 
     // LMSInitialize fails: notice explains, learner continues
-    await page.goto(`${origin()}/__lms/harness.html?mode=initfail`);
-    sco = page.frameLocator('#sco');
-    await expect(sco.getByRole('alert')).toContainText('did not start a tracking session');
-    await expect(sco.getByTestId('tracking-status')).toHaveAttribute('data-health', 'degraded');
-    await sco.locator('.pl-card', { hasText: 'Heart' }).click();
-    await expect(sco.locator('.vp__controls')).toBeVisible({ timeout: 60_000 });
+    s = await launch('mode=initfail');
+    await expect(s.sco.getByRole('alert')).toContainText('did not start a tracking session');
+    await expect(s.sco.getByTestId('tracking-status')).toHaveAttribute('data-health', 'degraded');
+    await s.sco.locator('.pl-card', { hasText: 'Heart' }).click();
+    await expect(s.sco.locator('.vp__controls')).toBeVisible({ timeout: 60_000 });
+    await s.ctx.close();
 
     // An LMS that throws on every call
-    await page.goto(`${origin()}/__lms/harness.html?mode=throw`);
-    sco = page.frameLocator('#sco');
-    await expect(sco.locator('.pl-card')).toHaveCount(2);
-    await sco.locator('.pl-card', { hasText: 'Knee' }).click();
-    await expect(sco.locator('.vp__controls')).toBeVisible({ timeout: 60_000 });
+    s = await launch('mode=throw');
+    await expect(s.sco.locator('.pl-card')).toHaveCount(2);
+    await s.sco.locator('.pl-card', { hasText: 'Knee' }).click();
+    await expect(s.sco.locator('.vp__controls')).toBeVisible({ timeout: 60_000 });
+    await s.ctx.close();
 
     // Writes fail mid-session, then the LMS recovers
-    await page.goto(`${origin()}/__lms/harness.html?mode=commitfail&failnow=0`);
-    sco = page.frameLocator('#sco');
+    s = await launch('mode=commitfail&failnow=0');
+    const { page, sco } = s;
     await expect(sco.getByTestId('tracking-status')).toHaveAttribute('data-mode', 'lms');
     await page.evaluate(() => ((window as never as { __lms: { failing: boolean } }).__lms.failing = true));
     await sco.locator('.pl-card', { hasText: 'Knee' }).click();
@@ -377,6 +384,7 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     await expect(sco.getByTestId('tracking-status')).toHaveAttribute('data-health', 'ok', { timeout: 30_000 });
     const d = await page.evaluate(() => (window as never as { __lms: { data: Record<string, string> } }).__lms.data);
     expect(d['cmi.suspend_data']).toMatch(/^a1\|/);
+    await s.ctx.close();
   });
 
   test('the package works when opened without an LMS and without any server-side help (no external requests)', async ({ browser }) => {

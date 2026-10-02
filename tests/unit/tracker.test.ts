@@ -329,6 +329,22 @@ describe('review fixes: status recovery and local mirror', () => {
     expect(t.getState().health).toBe('ok');
   });
 
+  it('ignores stale local progress for a brand-new attempt (it must not complete a fresh attempt)', () => {
+    const local = mem();
+    const old = new ProgressTracker(content('open-all'), { api: null, storage: local });
+    old.start();
+    old.openModel('m1');
+    old.openModel('m2'); // completed in an earlier attempt
+    old.terminate();
+    const api = asApi(lms()); // fresh attempt: ab-initio, not attempted
+    const t = new ProgressTracker(content('open-all'), { api, storage: local });
+    t.start();
+    expect(t.getState().completed).toBe(false);
+    expect(t.getState().progress.opened).toEqual([]);
+    vi.advanceTimersByTime(1500);
+    expect(api.cmi.core.lesson_status).toBe('incomplete');
+  });
+
   it('merges progress kept locally when the LMS lost it, and sends it to the LMS', () => {
     const local = mem();
     const first = new ProgressTracker(content('open-all'), { api: null, storage: local });

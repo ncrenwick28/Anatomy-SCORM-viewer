@@ -150,8 +150,11 @@ export class ProgressTracker {
     if (this.mode === 'lms' && (status === 'not attempted' || status === '' || status === 'browsed')) {
       this.needsIncomplete = !this.completed;
     }
-    // If an earlier session could not reach the LMS, progress was also kept locally; merge it (progress only grows).
-    const local = this.readLocal();
+    // If an earlier session of THIS attempt could not reach the LMS, progress was also kept locally; merge it
+    // (progress only grows). A brand-new attempt (ab-initio, e.g. after an instructor reset it) starts clean: stale
+    // local data must never complete a fresh attempt.
+    const resumingAttempt = entry === 'resume' || (status !== '' && status !== 'not attempted');
+    const local = resumingAttempt ? this.readLocal() : null;
     if (local && local.matched) {
       const merged = mergeProgress(this.progress, local.progress, this.content.models.map((m) => m.id));
       if (JSON.stringify(merged) !== JSON.stringify(this.progress)) {
