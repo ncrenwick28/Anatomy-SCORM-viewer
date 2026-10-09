@@ -17,7 +17,7 @@ A professional web application for an anatomy lecturer teaching medical students
 **Workflow:** clear save status and unsaved-change warnings; undo/redo for annotation creation, movement and deletion; student-preview mode; empty states, validation, recoverable errors; pre-export check for missing assets/invalid content.
 
 ## Exported learning package
-**Student experience:** polished interface (not the authoring dashboard). Browse by region and system; search; thumbnail gallery; read descriptions; rotate/pan/zoom/reset/full-screen; show/hide annotations; select annotations from model or searchable list; read descriptions without losing place; return easily to the gallery. Desktop and tablet layouts with a usable smaller-screen fallback. No authoring controls. Lightweight self-study mode (conceal annotation names until revealed).
+**Student experience:** polished interface (not the authoring dashboard). Browse by region and system; search; thumbnail gallery; read descriptions; rotate/pan/zoom/reset/full-screen; show/hide annotations; select annotations from model or searchable list; read descriptions without losing place; return easily to the gallery. Desktop and tablet layouts with a usable smaller-screen fallback. No authoring controls. Lightweight self-study mode (conceal annotation names until revealed). *Changed after delivery at the lecturer's request: self-study is now an interactive quiz – see docs/ARCHITECTURE.md.*
 
 **Export workflow:** choose models; package title, description, optional intro text; optional logo and accent colour; which student features are enabled; the completion rule (e.g. open all models; open all models and view all required annotations) with a precise definition of "viewed".
 

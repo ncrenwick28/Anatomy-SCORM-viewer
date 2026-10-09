@@ -116,3 +116,61 @@ export async function buildViaUi(page: Page, fileName: string): Promise<string> 
   await download.saveAs(path);
   return path;
 }
+
+// ───────────── player quiz helpers (exported package) ─────────────
+type QuizDbg = {
+  primary: () => { canvas: HTMLCanvasElement; pickAt: (x: number, y: number) => { meshKey: string } | null; projectAnchor: (a: unknown) => { x: number; y: number } | null };
+  content: { models: { annotations: { label: string; anchor: { meshKey: string } }[] }[] };
+};
+
+/** Screen position of the structure named `label`, and whether a click there really lands on its mesh. */
+export async function structurePoint(page: Page, label: string): Promise<{ x: number; y: number; landsOnIt: boolean } | null> {
+  const read = () =>
+    page.evaluate((l) => {
+      const d = (window as unknown as { __ANATOMY_DEBUG__: QuizDbg }).__ANATOMY_DEBUG__;
+      const v = d.primary();
+      const a = d.content.models.flatMap((m) => m.annotations).find((x) => x.label === l);
+      const p = a ? v.projectAnchor(a.anchor) : null;
+      if (!a || !p) return null;
+      return { ...p, landsOnIt: v.pickAt(p.x, p.y)?.meshKey === a.anchor.meshKey };
+    }, label);
+  // wait for any camera animation to finish: two identical readings in a row
+  let prev = await read();
+  for (let i = 0; i < 25; i++) {
+    await page.waitForTimeout(150);
+    const cur = await read();
+    if (cur && prev && Math.abs(cur.x - prev.x) < 0.5 && Math.abs(cur.y - prev.y) < 0.5) return cur;
+    prev = cur;
+  }
+  return prev;
+}
+
+/** A point on the model that belongs to a different mesh than the structure named `label` (a wrong answer). */
+export async function pointOffStructure(page: Page, label: string): Promise<{ x: number; y: number } | null> {
+  return page.evaluate((l) => {
+    const d = (window as unknown as { __ANATOMY_DEBUG__: QuizDbg }).__ANATOMY_DEBUG__;
+    const v = d.primary();
+    const a = d.content.models.flatMap((m) => m.annotations).find((x) => x.label === l)!;
+    const r = v.canvas.getBoundingClientRect();
+    for (let y = r.top + 40; y < r.bottom - 60; y += 14) {
+      for (let x = r.left + 40; x < r.right - 40; x += 14) {
+        const hit = v.pickAt(x, y);
+        if (hit && hit.meshKey !== a.anchor.meshKey) return { x, y };
+      }
+    }
+    return null;
+  }, label);
+}
+
+/** A point inside the canvas that is not on the model. */
+export async function emptyPoint(page: Page): Promise<{ x: number; y: number } | null> {
+  return page.evaluate(() => {
+    const v = (window as unknown as { __ANATOMY_DEBUG__: QuizDbg }).__ANATOMY_DEBUG__.primary();
+    const r = v.canvas.getBoundingClientRect();
+    for (let y = r.top + r.height * 0.3; y < r.bottom - 120; y += 20) {
+      const x = r.left + 12;
+      if (!v.pickAt(x, y)) return { x, y };
+    }
+    return null;
+  });
+}

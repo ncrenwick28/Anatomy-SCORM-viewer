@@ -71,6 +71,9 @@ Each frame the markers' world positions are projected. Every ≈70 ms after the 
 ## SCORM runtime (`src/player/`)
 `scorm12.ts` – API discovery (this window → parents → opener), a defensive client wrapper (every call try/caught, errors read via `LMSGetLastError`), session-time formatting. `tracker.ts` – modes `lms | browse | standalone`, health `ok | degraded`, debounced saves, immediate completion commit, retry timer, idempotent `terminate()`. `useTracker.ts` exposes state to React. The UI (`StatusBar.tsx`) only claims LMS tracking when `mode === 'lms' && health === 'ok'`.
 
+## Student quiz (`src/shared/quiz.ts`, `src/player/Quiz.tsx`)
+The "Quiz" tab (the `selfStudy` feature flag, kept under that name so old projects and backups still load) asks the learner to click on a named structure. `useQuiz` is a small state machine (`intro → asking → feedback → results`); while a question is open the viewer is given **no annotations** (nothing gives the answer away) and is put in pick mode. A click is turned into an anchor (`mesh key + local position`) and judged by `judgePick`: right if the nearest annotation on the clicked mesh is the target. Feedback draws only the answer's marker and turns the camera to it. The results screen shows the score, offers "retry the ones I missed", and a recap filterable by right / wrong-or-skipped; selecting a recap row shows that structure on the model. The logic in `quiz.ts` is pure and unit-tested; the whole journey is covered by the exported-package e2e test. The quiz does not change completion and is not sent to the LMS.
+
 ## Extending
 - **New student feature flag:** add it to `PlayerFeatures` and `DEFAULT_FEATURES` (`types.ts`), the zod schema (`schema.ts`), the checkbox list in `ExportPage.tsx`, and read it in `player/ModelView.tsx` / `Gallery.tsx`.
 - **New completion rule:** add it to `CompletionRule`, `computeCompletion` and `COMPLETION_RULE_LABELS` (`completion.ts`), the zod enum, and unit-test it.

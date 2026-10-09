@@ -5,7 +5,7 @@ import type { CompletionRule } from './types';
  *
  * "Opened" – the learner opened the model in the viewer and it finished loading successfully.
  * "Viewed" (annotation) – the annotation's label and full description were displayed in the information
- *   panel (selected from the model or from the list). In self-study mode the learner must also reveal it.
+ *   panel (selected from the model or from the list). The quiz does not count towards completion.
  */
 export interface Progress {
   opened: string[];
@@ -110,6 +110,6 @@ export const COMPLETION_RULE_LABELS: Record<CompletionRule, { title: string; det
   'open-all-and-annotations': {
     title: 'Open every model and view every required annotation',
     detail:
-      'Complete once every included model has been opened and every annotation marked "required" has been viewed. An annotation counts as "viewed" when its label and description were shown in the information panel, by selecting it on the model or in the list. In self-study mode the learner must also reveal its name.',
+      'Complete once every included model has been opened and every annotation marked "required" has been viewed. An annotation counts as "viewed" when its label and description were shown in the information panel, by selecting it on the model or in the list. The quiz does not count towards completion.',
   },
 };

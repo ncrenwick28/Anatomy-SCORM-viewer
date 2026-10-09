@@ -976,6 +976,16 @@ export class ViewerCore {
     return { x: r.left + ((ndc.x + 1) / 2) * r.width, y: r.top + ((1 - ndc.y) / 2) * r.height };
   }
 
+  /** Screen position (client space) of any anchor of the loaded model, for tests. */
+  projectAnchor(anchor: AnnotationAnchor): { x: number; y: number } | null {
+    const p = this.root ? anchorToWorld(this.root, anchor) : null;
+    if (!p) return null;
+    this.camera.updateMatrixWorld();
+    const ndc = p.project(this.camera);
+    const r = this.canvas.getBoundingClientRect();
+    return { x: r.left + ((ndc.x + 1) / 2) * r.width, y: r.top + ((1 - ndc.y) / 2) * r.height };
+  }
+
   // ───────────────────────────── disposal ─────────────────────────────
   dispose(): void {
     if (this.disposed) return;

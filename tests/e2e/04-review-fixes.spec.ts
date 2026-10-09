@@ -137,7 +137,7 @@ test.describe('P-01: an annotation is only "viewed" once its description is show
     await page.goto('/#/export');
     await page.getByTestId('completion-open-all-and-annotations').check();
     await page.getByTestId('feature-annotationList').uncheck();
-    await expect(page.getByTestId('feature-selfStudy')).toBeDisabled(); // depends on the list
+    await expect(page.getByTestId('feature-selfStudy')).toBeEnabled(); // the quiz does not depend on the list
     await waitSaved(page);
     const zip = await buildViaUi(page, 'p01-package.zip');
     const server = await serveDirectory(await prepareRoot(zip));

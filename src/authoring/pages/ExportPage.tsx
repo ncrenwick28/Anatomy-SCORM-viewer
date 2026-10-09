@@ -24,7 +24,7 @@ const FEATURES: { key: keyof PlayerFeatures; label: string; hint: string }[] = [
   { key: 'search', label: 'Search', hint: 'Students can search models by title, description and annotation names.' },
   { key: 'browseByCategory', label: 'Browse by body region and system', hint: 'Filter chips in the gallery.' },
   { key: 'annotationList', label: 'Searchable annotation list', hint: 'A list beside the model as an alternative to clicking markers.' },
-  { key: 'selfStudy', label: 'Self-study mode', hint: 'Students can hide annotation names and reveal them when ready. Needs the annotation list.' },
+  { key: 'selfStudy', label: 'Quiz', hint: 'Students are asked to click on annotated structures on the model, then get a score and a recap of right and wrong answers. Works best with one annotation per structure.' },
   { key: 'structureList', label: 'Structure list', hint: 'Show/hide and isolate separate meshes (only for models with several meshes).' },
   { key: 'fullscreen', label: 'Full-screen button', hint: 'Falls back to filling the frame when the LMS does not allow full screen.' },
 ];
@@ -232,10 +232,8 @@ export function ExportPage({ onGoLibrary }: { onGoLibrary: () => void }) {
             <div className="feature-list">
               {FEATURES.map((f) => (
                 <label key={f.key} className="check">
-                  <input type="checkbox" checked={config.features[f.key]} disabled={f.key === 'selfStudy' && !config.features.annotationList}
-                    onChange={(e) => {
+                  <input type="checkbox" checked={config.features[f.key]}                    onChange={(e) => {
                       const features = { ...config.features, [f.key]: e.target.checked };
-                      if (f.key === 'annotationList' && !e.target.checked) features.selfStudy = false;
                       set({ features });
                     }} data-testid={`feature-${f.key}`} />
                   <span><strong>{f.label}</strong><br /><span className="hint">{f.hint}</span></span>

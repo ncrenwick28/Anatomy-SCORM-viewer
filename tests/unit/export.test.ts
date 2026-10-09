@@ -198,10 +198,13 @@ describe('preflight', () => {
     expect(r.ok).toBe(false);
     expect(r.issues.find((i) => i.code === 'anchor-problem')?.message).toContain('Apex');
   });
-  it('rejects self-study without the annotation list', () => {
+  it('allows the quiz without the annotation list, but notes when no model has annotations', () => {
     const inp = base();
     inp.config.features = { ...inp.config.features, annotationList: false, selfStudy: true };
-    expect(runPreflight(inp).issues.some((i) => i.code === 'selfstudy-needs-list')).toBe(true);
+    expect(runPreflight(inp).issues.some((i) => i.code === 'quiz-no-annotations')).toBe(false);
+    for (const m of inp.models) m.annotations = [];
+    const issue = runPreflight(inp).issues.find((i) => i.code === 'quiz-no-annotations');
+    expect(issue?.level).toBe('info');
   });
   it('warns when the annotation rule has no required annotations', () => {
     const inp = base();

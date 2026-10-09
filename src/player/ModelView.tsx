@@ -2,7 +2,6 @@ import { useCallback, useContext, useEffect, useMemo, useRef, useState } from 'r
 import * as Tabs from '@radix-ui/react-tabs';
 import { ArrowLeft, Eye, EyeOff, MapPin, Info, Layers, GraduationCap } from 'lucide-react';
 import type { PackageContent, PackageModel } from '../shared/content';
-import type { Annotation } from '../shared/types';
 import { AnnotationDetail, AnnotationList } from '../ui/AnnotationPanel';
 import { AssetResolverContext } from '../ui/Assets';
 import { useFullscreen } from '../ui/hooks';
@@ -13,6 +12,7 @@ import type { StructureNode } from '../viewer/meshKeys';
 import type { MarkerState, ModelSource } from '../viewer/types';
 import type { ViewerCore } from '../viewer/ViewerCore';
 import type { ProgressTracker, TrackerState } from './tracker';
+import { QuizPanel, useQuiz } from './Quiz';
 
 interface Props {
   content: PackageContent;
@@ -40,18 +40,23 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
   const [states, setStates] = useState<Record<string, MarkerState>>({});
   const [showMarkers, setShowMarkers] = useState(true);
   const [showHidden, setShowHidden] = useState(false);
-  const [selfStudy, setSelfStudy] = useState(false);
-  const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [tab, setTab] = useState('about');
   const annotations = model.annotations;
   const hasAnnotations = annotations.length > 0;
+  // The quiz only asks about structures that are visible in the author's default view, so every question can be answered.
+  const quizPool = useMemo(() => {
+    const hidden = model.view.hiddenMeshKeys;
+    return annotations.filter((a) => !hidden.some((k) => a.anchor.meshKey === k || a.anchor.meshKey.startsWith(`${k}/`)));
+  }, [annotations, model.view.hiddenMeshKeys]);
+  const quiz = useQuiz(quizPool);
+  const quizAvailable = f.selfStudy && quizPool.length > 0;
+  const quizOn = quizAvailable && tab === 'quiz';
   const viewed = useMemo(() => new Set(state.progress.viewed[model.id] ?? []), [state.progress.viewed, model.id]);
 
   // Reset per-model state when switching models.
   useEffect(() => {
     setSelectedId(null);
-    setRevealed(new Set());
-    setSelfStudy(false);
+    quiz.reset();
     setShowHidden(false);
     setShowMarkers(true);
     setStructure([]);
@@ -60,6 +65,7 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
     headingRef.current?.focus();
     document.title = `${model.title} – ${content.title}`;
     return () => void (document.title = content.title);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [model.id, model.title, content.title]);
 
   // Resolve every file of the model to a loadable URL.
@@ -74,16 +80,24 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
     };
   }, [model, resolve]);
 
-  const isConcealed = useCallback((a: Annotation) => selfStudy && !revealed.has(a.id), [selfStudy, revealed]);
-  const labelFor = useCallback((a: Annotation, i: number) => (isConcealed(a) ? `Structure ${i + 1}` : a.label), [isConcealed]);
-
   // An annotation counts as "viewed" only once its label and description are actually on screen: the detail
-  // card lives in the Annotations tab, so that tab must be showing (and the name must not be concealed).
+  // card lives in the Annotations tab, so that tab must be showing. (The quiz does not count towards completion.)
   useEffect(() => {
     if (!selectedId || tab !== 'annotations') return;
-    const a = annotations.find((x) => x.id === selectedId);
-    if (a && !isConcealed(a)) tracker.viewAnnotation(model.id, a.id);
-  }, [selectedId, tab, isConcealed, annotations, tracker, model.id]);
+    if (annotations.some((x) => x.id === selectedId)) tracker.viewAnnotation(model.id, selectedId);
+  }, [selectedId, tab, annotations, tracker, model.id]);
+
+  // Quiz feedback: make sure the answer is in view (the marker is drawn by the Viewport on the next effect pass).
+  const quizShownId = quizOn ? quiz.selectedId : null;
+  const quizPhase = quiz.state.phase;
+  useEffect(() => {
+    if (!quizShownId) return;
+    const t = setTimeout(() => viewerRef.current?.ensureMarkerVisible(quizShownId), 60);
+    return () => clearTimeout(t);
+  }, [quizShownId, quizPhase]);
+  const showOnModel = useCallback((id: string) => {
+    setTimeout(() => viewerRef.current?.focusAnnotation(id, true), 80);
+  }, []);
 
   const select = useCallback(
     (id: string | null, fromList = false) => {
@@ -112,7 +126,7 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
 
   const overlay = (
     <div className="pl-vp-tools">
-      {hasAnnotations && (
+      {hasAnnotations && !quizOn && (
         <>
           <button type="button" className={`btn btn--sm ${showMarkers ? 'is-on' : ''}`} onClick={() => setShowMarkers((v) => !v)}>
             <MapPin /> {showMarkers ? 'Hide annotations' : 'Show annotations'}
@@ -149,12 +163,13 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
           ariaLabel={`3D model: ${model.title}`}
           source={source}
           sourceKey={`${model.id}`}
-          annotations={annotations}
-          selectedId={selectedId}
-          showMarkers={showMarkers}
-          showHiddenMarkers={showHidden}
+          annotations={quizOn ? quiz.viewAnnotations : annotations}
+          selectedId={quizOn ? quiz.selectedId : selectedId}
+          showMarkers={quizOn || showMarkers}
+          showHiddenMarkers={!quizOn && showHidden}
+          pickMode={quizOn && quiz.picking}
+          onPick={(r) => quizOn && quiz.picking && quiz.pick(r ? { meshKey: r.anchor.meshKey, position: r.anchor.position } : null)}
           view={model.view}
-          labelFor={labelFor}
           dracoPath={dracoPath}
           viewerRef={viewerRef}
           fullscreen={f.fullscreen ? fullscreen : null}
@@ -163,7 +178,7 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
             setStructure(info.structure);
             tracker.openModel(model.id);
           }}
-          onMarkerClick={(id) => select(id)}
+          onMarkerClick={(id) => !quizOn && select(id)}
           onBackgroundClick={() => undefined}
           onMarkerStates={setStates}
           onVisibility={() => setTick((t) => t + 1)}
@@ -173,6 +188,7 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
             <Tabs.List className="tabs-list" aria-label="Model panels">
               <Tabs.Trigger className="tab" value="about"><Info size={16} aria-hidden="true" /> About</Tabs.Trigger>
               {hasAnnotations && <Tabs.Trigger className="tab" value="annotations"><MapPin size={16} aria-hidden="true" /> Annotations <span className="pl-count">{annotations.length}</span></Tabs.Trigger>}
+              {quizAvailable && <Tabs.Trigger className="tab" value="quiz"><GraduationCap size={16} aria-hidden="true" /> Quiz</Tabs.Trigger>}
               {showStructures && <Tabs.Trigger className="tab" value="structures"><Layers size={16} aria-hidden="true" /> Structures</Tabs.Trigger>}
             </Tabs.List>
 
@@ -201,30 +217,9 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
 
             {hasAnnotations && (
               <Tabs.Content value="annotations" className="pl-tabpanel pl-tabpanel--ann">
-                <div className="pl-ann-tools">
-                  {f.selfStudy && f.annotationList && (
-                    <button
-                      type="button"
-                      role="switch"
-                      aria-checked={selfStudy}
-                      className={`pl-switch ${selfStudy ? 'is-on' : ''}`}
-                      onClick={() => { setSelfStudy((s) => !s); setRevealed(new Set()); }}
-                    >
-                      <span className="pl-switch__track" aria-hidden="true"><i /></span>
-                      <GraduationCap size={16} aria-hidden="true" /> Self-study mode
-                    </button>
-                  )}
-                  {selfStudy && (
-                    <div className="pl-reveal-all">
-                      <button type="button" className="btn btn--sm" onClick={() => setRevealed(new Set(annotations.map((a) => a.id)))}>Reveal all</button>
-                      <button type="button" className="btn btn--sm" onClick={() => setRevealed(new Set())}>Hide all</button>
-                    </div>
-                  )}
-                </div>
-                {selfStudy && <p className="hint pl-ann-hint">Names are hidden. Pick a marker, think, then reveal.</p>}
                 {f.annotationList && (
                   <div className="pl-ann-scroll">
-                    <AnnotationList annotations={annotations} selectedId={selectedId} onSelect={(id) => select(id, true)} states={states} viewed={content.completion === 'launch' ? undefined : viewed} isConcealed={isConcealed} idPrefix="pl-ann" />
+                    <AnnotationList annotations={annotations} selectedId={selectedId} onSelect={(id) => select(id, true)} states={states} viewed={content.completion === 'launch' ? undefined : viewed} idPrefix="pl-ann" />
                   </div>
                 )}
                 <div className="pl-ann-detail" ref={detailWrapRef}>
@@ -233,8 +228,7 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
                       annotation={selected}
                       index={selectedIdx}
                       total={annotations.length}
-                      concealed={isConcealed(selected)}
-                      onReveal={() => setRevealed((r) => new Set(r).add(selected.id))}
+                      concealed={false}
                       state={states[selected.id]}
                       onPrev={annotations.length > 1 ? () => prevNext(-1) : undefined}
                       onNext={annotations.length > 1 ? () => prevNext(1) : undefined}
@@ -246,6 +240,12 @@ export function ModelView({ content, model, index, state, tracker, dracoPath, on
                     <p className="hint pl-ann-prompt">{f.annotationList ? 'Choose an annotation from the list or select a numbered marker on the model.' : 'Select a numbered marker on the model to read about it.'}</p>
                   )}
                 </div>
+              </Tabs.Content>
+            )}
+
+            {quizAvailable && (
+              <Tabs.Content value="quiz" className="pl-tabpanel">
+                <QuizPanel quiz={quiz} annotations={quizPool} onCentrePick={() => { const a = viewerRef.current?.pickAtCentre(); quiz.pick(a ? { meshKey: a.meshKey, position: a.position } : null); }} onShowOnModel={showOnModel} />
               </Tabs.Content>
             )}
 

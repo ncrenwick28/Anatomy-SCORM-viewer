@@ -38,7 +38,7 @@ They drive the built application and **the exported ZIP itself** (unzipped and s
 | 5. Reload and persistence | `01` reload on the workspace route and library; `03` failing storage writes reported, retried and recovered; unsaved-work prompt |
 | 6. Filter and select for export | `01` region/system/search filters, selection, "selected only" filter, export list |
 | 7. Export a valid package containing only selected content | `02` builds through the UI with logo/accent/intro/rule; ZIP inspected (manifest, listed files, only the 2 chosen models, no remote references, size); `03` Draco decoder shipped only when needed |
-| 8. Open the exported package and test the student UI | `02` gallery, branding, search, region/system filters, model view, list ⇄ marker selection, show/hide, self-study conceal/reveal, structure list, reset, back, no external requests, no console errors |
+| 8. Open the exported package and test the student UI | `02` gallery, branding, search, region/system filters, model view, list ⇄ marker selection, show/hide, the quiz (click on named structures, miss/skip/wrong/correct, score, right/wrong recap, retry missed, markers hidden while asking), structure list, reset, back, no external requests, no console errors |
 | 9. Annotations and default views match authoring | `02` camera target/up/direction/fov identical, distance differs only by the documented aspect compensation, every annotation's world position identical |
 | 10. Completion, resume, LMS failure | `02` (with `scorm-again` and the mock LMS): completion by rule, nothing completes early, valid values, `suspend_data` ≤ 4096, resume with "Welcome back", no API → standalone claims, `LMSInitialize` failure, failing writes then recovery, LMS that throws |
 | Regression tests for review findings | `04`: restorable backups, two-tab conflicts, "viewed" with the list switched off, same-named textures in folders, `incomplete` re-sent after a failed launch, orphan sweep, saved-view indicator and focus order, axe on a populated export page, corrupt-model message |
@@ -51,7 +51,7 @@ Recorded after the fixes for independent review 2 (build of commit `39200f1`):
 | Suite | Result |
 |---|---|
 | Type-check (`npm run typecheck`) | clean |
-| Unit tests (`npm test`) | **98 passed** of 98 (8 files) |
+| Unit tests (`npm test`) | **108 passed** of 108 (9 files) |
 | Browser tests (`npx playwright test`, single worker, software WebGL) | **44 passed**, 1 skipped (`sample.spec.ts`, which only runs for `npm run sample:export`), 0 failed — 10.0 minutes |
 | axe-core (WCAG 2.0/2.1 A + AA) | no serious or critical violations on any screen scanned (library, import dialog, export with and without listed checks, help, workspace tabs, player gallery/model/annotations) |
 
@@ -72,3 +72,6 @@ Recorded after the fixes for independent review 2 (build of commit `39200f1`):
 - Other browsers (Firefox, Safari), real GPUs, touch input, screen readers (only axe-core automated checks), forced-colours mode.
 - The native browser "unsaved changes" dialog (verified at the `beforeunload` event level because headless Chromium does not show it).
 - Very large models (>100 MB) and very large projects; performance was checked only on the small demonstration models and a 3-mesh fixture.
+
+### Quiz change (after the independent reviews)
+The self-study switch was replaced by the click-the-structure quiz at the lecturer's request. This change was **not** part of either independent review. Verified: typecheck clean; 108 unit tests (10 new, for the judging, question-selection and scoring logic); e2e `02` (9 tests) including a full quiz run in the exported package (a click that misses the model, skip, wrong click on another structure, correct clicks on the model and from the list, score 5/7 = 71%, right/wrong recap and filter, retry the missed ones to 2/2, markers hidden while a question is open) with axe scans of the question, wrong-answer and results screens; the other e2e files (01, 03, 04) passed before a final tab-bar style tweak, after which the responsive test was re-run. Visual check by screenshot in headless Chromium only.

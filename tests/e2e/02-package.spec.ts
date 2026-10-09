@@ -1,3 +1,4 @@
+import AxeBuilder from '@axe-core/playwright';
 import { expect, test, type Browser, type Page } from '@playwright/test';
 import { DOMParser } from '@xmldom/xmldom';
 import { mkdirSync, readFileSync } from 'node:fs';
@@ -5,7 +6,7 @@ import { join } from 'node:path';
 import { prepareRoot, serveDirectory } from '../../scripts/serve-package';
 import { readZip } from '../../src/shared/zip';
 import { makePng } from '../fixtures/makeModels';
-import { card, debugState, gotoApp, loadDemo, openModel, OUT, waitSaved, writeFixtures } from './helpers';
+import { card, debugState, emptyPoint, gotoApp, loadDemo, openModel, OUT, pointOffStructure, structurePoint, waitSaved, writeFixtures } from './helpers';
 import { lmsRoutes } from './lmsHarness';
 
 /**
@@ -63,7 +64,7 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
 
     await page.getByTestId('export-title').fill('Cardio & knee <demo> "pack"');
     await page.getByLabel(/Short description/).fill('Two schematic models.');
-    await page.getByTestId('export-intro').fill('Welcome!\n\n- Rotate **each** model\n- Use self-study mode');
+    await page.getByTestId('export-intro').fill('Welcome!\n\n- Rotate **each** model\n- Try the quiz');
     await page.getByTestId('export-logo').setInputFiles({ name: 'school logo.png', mimeType: 'image/png', buffer: Buffer.from(makePng(64, 32, [20, 90, 160])) });
     await page.getByTestId('export-accent').fill('#1a5fb4');
     await page.getByTestId('completion-open-all-and-annotations').check();
@@ -185,17 +186,81 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     await page.getByLabel('Search annotations').fill('Superior vena');
     await expect(page.locator('.ann-item')).toHaveCount(1);
     await page.getByLabel('Search annotations').fill('');
-    // Self-study conceals names until revealed
-    await page.getByRole('switch', { name: /Self-study/ }).click();
-    await expect(page.locator('.ann-item').first()).toContainText('Structure 1');
-    await expect(page.locator('.ann-item').first()).not.toContainText('Right atrium');
-    await page.locator('.ann-item').nth(2).click();
-    await expect(page.getByTestId('annotation-detail')).toContainText('hidden for self-study');
-    await expect(page.getByTestId('annotation-detail')).not.toContainText('thickest-walled');
-    await expect.poll(async () => (await debugState(page)).markers.some((m) => /Left ventricle/.test(m.label ?? ''))).toBe(false);
-    await page.getByRole('button', { name: 'Reveal name and description' }).click();
-    await expect(page.getByTestId('annotation-detail')).toContainText('Left ventricle');
-    await page.getByRole('switch', { name: /Self-study/ }).click();
+    // Quiz: click on the named structure, get a score, recap right and wrong
+    await page.getByRole('tab', { name: /Quiz/ }).click();
+    await expect(page.getByTestId('quiz-intro')).toBeVisible();
+    await page.getByTestId('quiz-start').click(); // default: all questions
+    await expect(page.getByTestId('quiz')).toContainText('Question 1 of 7');
+    await expect.poll(async () => (await debugState(page)).markers.length).toBe(0); // nothing gives the answer away
+    const empty = await emptyPoint(page);
+    if (empty) {
+      await page.mouse.click(empty.x, empty.y); // a click that misses the model is not an answer
+      await expect(page.getByText(/did not land on the model/)).toBeVisible();
+      await expect(page.getByTestId('quiz')).toContainText('Question 1 of 7');
+    }
+    const axe = async (where: string) => {
+      const r = await new AxeBuilder({ page }).withTags(['wcag2a', 'wcag2aa', 'wcag21a', 'wcag21aa']).analyze();
+      expect(r.violations.filter((v) => v.impact === 'serious' || v.impact === 'critical').map((v) => `${where}: ${v.id}`)).toEqual([]);
+    };
+    await axe('quiz question');
+    const outcomes: string[] = [];
+    let modelCorrect = 0;
+    for (let i = 0; i < 7; i++) {
+      const q = (await page.getByTestId('quiz-question').innerText()).replace(/^Click on the /, '');
+      if (i === 1) {
+        await page.getByRole('button', { name: 'Skip' }).click();
+        outcomes.push('skipped');
+      } else if (i === 2) {
+        const off = await pointOffStructure(page, q);
+        expect(off, 'a point on another structure').not.toBeNull();
+        await page.mouse.click(off!.x, off!.y);
+        outcomes.push('wrong');
+      } else {
+        await page.getByRole('button', { name: 'Reset view' }).click();
+        const pt = await structurePoint(page, q);
+        if (pt?.landsOnIt) {
+          await page.mouse.click(pt.x, pt.y);
+          modelCorrect++;
+        } else {
+          await page.getByText(/Can.t click the model/).click();
+          await page.getByRole('button', { name: q, exact: true }).click();
+        }
+        outcomes.push('correct');
+      }
+      const fb = page.getByTestId('quiz-feedback');
+      await expect(fb).toBeVisible();
+      await expect(fb).toContainText(outcomes[i] === 'correct' ? 'Correct!' : outcomes[i] === 'wrong' ? 'Not quite' : 'Skipped');
+      await expect.poll(async () => (await debugState(page)).markers.length).toBeLessThanOrEqual(1); // at most the answer is marked
+      if (i === 2) await axe('quiz feedback (wrong)');
+      await page.getByTestId('quiz-next').click();
+    }
+    expect(modelCorrect, 'at least one correct answer was given by clicking the model').toBeGreaterThan(0);
+    await expect(page.getByTestId('quiz-results')).toBeVisible();
+    await expect(page.getByTestId('quiz-score')).toContainText('5 / 7');
+    await axe('quiz results');
+    await expect(page.getByTestId('quiz-score')).toContainText('71%');
+    await expect(page.locator('[data-testid=quiz-recap] li')).toHaveCount(7);
+    await expect(page.locator('[data-testid=quiz-recap] li[data-outcome=correct]')).toHaveCount(5);
+    await expect(page.locator('[data-testid=quiz-recap] li[data-outcome=wrong]')).toHaveCount(1);
+    await expect(page.locator('[data-testid=quiz-recap] li[data-outcome=skipped]')).toHaveCount(1);
+    await page.getByRole('button', { name: /Wrong or skipped \(2\)/ }).click();
+    await expect(page.locator('[data-testid=quiz-recap] li')).toHaveCount(2);
+    await page.locator('[data-testid=quiz-recap] .pl-quiz__itembtn').first().click(); // shows the structure on the model
+    await expect(page.getByTestId('quiz-review-detail')).toBeVisible();
+    await expect.poll(async () => (await debugState(page)).markers.length).toBe(1);
+    // Retry only the missed ones
+    await page.getByTestId('quiz-retry-missed').click();
+    await expect(page.getByTestId('quiz')).toContainText('Question 1 of 2');
+    for (let i = 0; i < 2; i++) {
+      const q = (await page.getByTestId('quiz-question').innerText()).replace(/^Click on the /, '');
+      await page.getByText(/Can.t click the model/).click();
+      await page.getByRole('button', { name: q, exact: true }).click();
+      await page.getByTestId('quiz-next').click();
+    }
+    await expect(page.getByTestId('quiz-score')).toContainText('2 / 2');
+    await expect(page.getByTestId('quiz-results')).toContainText('Perfect score');
+    await page.getByRole('tab', { name: /Annotations/ }).click(); // the normal markers come back
+    await expect.poll(async () => (await debugState(page)).markers.length).toBeGreaterThan(1);
     // Structure list: isolate a structure and hide another
     await page.getByRole('tab', { name: /Structures/ }).click();
     await page.getByRole('button', { name: 'Isolate Aorta' }).click();
@@ -297,7 +362,7 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     expect(d['cmi.core.lesson_status']).toBe('incomplete');
     expect(d['cmi.core.lesson_location']).toBe(snapshot.ids[HEART]);
     expect(d['cmi.suspend_data']).toMatch(/^a1\|/);
-    // Self-study: an annotation whose name is concealed must NOT count as viewed until it is revealed
+    // The quiz does not count towards completion: answering questions must not mark annotations as viewed
     await sco.getByRole('button', { name: 'Back to gallery' }).click();
     await sco.locator('.pl-card', { hasText: 'Knee' }).click();
     await expect(sco.locator('.vp__controls')).toBeVisible({ timeout: 60_000 });
@@ -305,13 +370,13 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     const progressText = () => sco.locator('.pl-progress__text').innerText();
     const viewedNow = async () => Number(/(\d+) of \d+ annotations viewed/.exec(await progressText())![1]);
     const before = await viewedNow();
-    await sco.getByRole('switch', { name: /Self-study/ }).click();
-    await sco.locator('.ann-item').first().click();
-    await expect(sco.getByTestId('annotation-detail')).toContainText('hidden for self-study');
+    await sco.getByRole('tab', { name: /Quiz/ }).click();
+    await sco.getByTestId('quiz-start').click();
+    await sco.getByText(/Can.t click the model/).click();
+    await sco.locator('.pl-quiz__alt button').first().click();
+    await expect(sco.getByTestId('quiz-feedback')).toBeVisible();
     await page.waitForTimeout(1200);
-    expect(await viewedNow()).toBe(before); // concealed: not counted
-    await sco.getByRole('button', { name: 'Reveal name and description' }).click();
-    await expect.poll(viewedNow).toBe(before + 1); // revealed: counted
+    expect(await viewedNow()).toBe(before);
   });
 
   test('10c. resume: progress is restored from suspend_data and the learner is offered where they left off', async ({ page }) => {

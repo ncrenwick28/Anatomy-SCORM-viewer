@@ -34,6 +34,7 @@ function boot() {
   // Read-only diagnostics used by automated tests and support.
   (window as unknown as Record<string, unknown>).__ANATOMY_DEBUG__ = {
     tracker,
+    content,
     viewers: () => [...ViewerCore.instances].map((v) => v.debugState()),
     primary: () => [...ViewerCore.instances][0],
   };

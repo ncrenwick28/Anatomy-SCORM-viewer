@@ -24,3 +24,9 @@
 
 **Content**
 - The demonstration models are schematic shapes, not anatomically accurate, and their text is placeholder content.
+
+## Quiz
+- **Several annotations on one mesh:** the quiz decides a click by the mesh that was hit. When more than one annotation sits on the same mesh (for example a single-mesh body with many labels), the annotation nearest to the click is taken as the answer, so a click on an unlabelled part of that mesh can count as right or wrong by proximity. Quizzes are most reliable with one annotation per separate structure.
+- **Hidden structures:** annotations on structures that the author hid in the default view are left out of the quiz (they cannot be clicked). If a learner hides a structure themselves from the Structures tab mid-question, that question may be unanswerable; they can use Skip.
+- **Not reported to the LMS:** the quiz score is shown to the learner only. It is not written to `cmi.core.score.*` and does not affect completion.
+- **Pointer-free alternative:** "Choose the centre of the view" and "choose from a list" are provided for keyboard and screen-reader users; the list makes the question a recognition task, not a locating task.

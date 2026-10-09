@@ -43,7 +43,7 @@ export function runPreflight(input: PreflightInput): PreflightReport {
   if (!config.title.trim()) add('error', 'no-title', 'The package needs a title.', undefined, 'Enter a title in the package settings.');
   if (!isValidHex(config.accent)) add('error', 'bad-accent', 'The accent colour is not a valid colour.');
   else if (contrastRatio(config.accent, '#ffffff') < 3) add('info', 'light-accent', 'The accent colour is very light; the player automatically darkens it where it is used for text.');
-  if (config.features.selfStudy && !config.features.annotationList) add('error', 'selfstudy-needs-list', 'Self-study mode needs the annotation list to be enabled.', undefined, 'Enable the annotation list or switch off self-study.');
+  if (config.features.selfStudy && models.length > 0 && !models.some((m) => m.annotations.length > 0)) add('info', 'quiz-no-annotations', 'The quiz is switched on, but none of the selected models has annotations, so students will not see it.', undefined, 'Add annotations to at least one model, or switch the quiz off.');
   if (input.logo) {
     if (!/^image\/(png|jpeg|webp|svg\+xml|gif)$/.test(input.logo.mime)) add('error', 'logo-type', 'The logo must be a PNG, JPEG, WebP, GIF or SVG image.');
     if (input.logo.size > LIMITS.maxLogoBytes) add('error', 'logo-size', `The logo is larger than ${(LIMITS.maxLogoBytes / 1048576).toFixed(0)} MB.`);
