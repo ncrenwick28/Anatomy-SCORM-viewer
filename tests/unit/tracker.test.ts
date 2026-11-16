@@ -408,3 +408,61 @@ describe('review fixes: status recovery and local mirror', () => {
     expect(api.rejected).toEqual([]);
   });
 });
+
+describe('ProgressTracker session time (active use only)', () => {
+  const setup = () => {
+    let clock = 0;
+    const api = asApi(lms());
+    const t = new ProgressTracker(content('open-all'), { api, storage: null, now: () => clock, idleMs: 60_000 });
+    return { api, t, advance: (ms: number) => (clock += ms) };
+  };
+
+  it('does not count time before the first interaction', () => {
+    const { api, t, advance } = setup();
+    t.start();
+    advance(10 * 60_000);
+    t.terminate();
+    expect(api.writes['cmi.core.session_time']).toBe('0000:00:00.00');
+  });
+
+  it('counts from the first interaction, through short pauses, to the page closing', () => {
+    const { api, t, advance } = setup();
+    t.start();
+    advance(5 * 60_000);
+    t.noteActivity();
+    advance(30_000);
+    t.noteActivity();
+    advance(20_000);
+    t.terminate();
+    expect(api.writes['cmi.core.session_time']).toBe('0000:00:50.00');
+  });
+
+  it('stops at the last interaction once idle, and restarts at the next one', () => {
+    const { api, t, advance } = setup();
+    t.start();
+    t.noteActivity();
+    advance(40_000);
+    t.noteActivity();
+    advance(10 * 60_000); // idle: none of this counts
+    expect(t.sessionTimeMs()).toBe(40_000);
+    t.noteActivity();
+    advance(15_000);
+    t.terminate();
+    expect(api.writes['cmi.core.session_time']).toBe('0000:00:55.00');
+  });
+
+  it('pauses while the page is hidden and waits for an interaction to resume', () => {
+    const { api, t, advance } = setup();
+    t.start();
+    t.noteActivity();
+    advance(30_000);
+    t.pause();
+    advance(5 * 60_000);
+    expect(t.sessionTimeMs()).toBe(30_000);
+    t.noteActivity();
+    advance(5_000);
+    t.terminate();
+    expect(api.writes['cmi.core.session_time']).toBe('0000:00:35.00');
+    expect(api.rejected).toEqual([]);
+  });
+});

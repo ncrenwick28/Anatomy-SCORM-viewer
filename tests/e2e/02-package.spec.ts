@@ -344,6 +344,8 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     expect(s.suspend).toMatch(/^a1\|/);
     expect(s.rejected).toEqual([]);
     expect(s.writes['cmi.core.session_time']).toMatch(/^\d{4}:\d{2}:\d{2}\.\d{2}$/);
+    // Clicks inside the package start the active-time clock
+    expect(s.writes['cmi.core.session_time']).not.toBe('0000:00:00.00');
     await expect(sco.getByText('Completed').first()).toBeVisible();
     // Leaving the page terminates the session
     await page.goto('about:blank');

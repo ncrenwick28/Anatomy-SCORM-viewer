@@ -15,6 +15,10 @@ import { Scorm12Client, findApi, formatScorm12Time, type Scorm12Api } from './sc
  * Health
  *   ok         – the last LMS write succeeded (or there was nothing to write).
  *   degraded   – an LMS call failed; progress continues locally and the tracker keeps retrying.
+ *
+ * Session time counts active use only, so a package embedded in a longer page does not report time spent reading
+ * the rest of that page: the clock starts at the first interaction (noteActivity), stops when the page is hidden
+ * (pause) and stops at the last interaction once the learner has been idle for longer than idleMs.
  */
 
 export type TrackingMode = 'lms' | 'browse' | 'standalone';
@@ -52,11 +56,14 @@ export interface TrackerOptions {
   saveDelayMs?: number;
   /** Retry interval while the LMS link is degraded. */
   retryMs?: number;
+  /** Inactivity after which the session-time clock stops (at the last interaction). */
+  idleMs?: number;
 }
 
 type Listener = (s: TrackerState) => void;
 
 const ID_LIMIT = 250;
+const IDLE_MS = 5 * 60_000;
 
 export class ProgressTracker {
   private client: Scorm12Client | null = null;
@@ -71,7 +78,11 @@ export class ProgressTracker {
   private contentChanged = false;
   private lastSavedAt: number | null = null;
   private notice: string | null = null;
-  private startedAt = 0;
+  /** Active time from periods that have already ended. */
+  private activeMs = 0;
+  /** Start of the current active period, or null while the clock is stopped. */
+  private activeSince: number | null = null;
+  private lastActivityAt = 0;
   private terminated = false;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
@@ -98,7 +109,6 @@ export class ProgressTracker {
 
   // ───────────── lifecycle ─────────────
   start(): void {
-    this.startedAt = this.now();
     const win = this.opts.window ?? (typeof window !== 'undefined' ? window : undefined);
     let api: Scorm12Api | null = null;
     if (this.opts.api !== undefined) api = this.opts.api;
@@ -209,6 +219,39 @@ export class ProgressTracker {
     }
   }
 
+  // ───────────── session time ─────────────
+  /** The learner interacted with the package (pointer, touch, wheel or keyboard). Starts or continues the clock. */
+  noteActivity(): void {
+    if (this.terminated) return;
+    const t = this.now();
+    this.closeIdlePeriod(t);
+    if (this.activeSince === null) this.activeSince = t;
+    this.lastActivityAt = t;
+  }
+
+  /** Stops the clock (page hidden). It restarts at the next interaction. */
+  pause(): void {
+    const t = this.now();
+    this.closeIdlePeriod(t);
+    if (this.activeSince === null) return;
+    this.activeMs += Math.max(0, t - this.activeSince);
+    this.activeSince = null;
+  }
+
+  /** Ends an active period that ran idle, crediting it only up to the last interaction. */
+  private closeIdlePeriod(t: number): void {
+    if (this.activeSince === null || t - this.lastActivityAt <= (this.opts.idleMs ?? IDLE_MS)) return;
+    this.activeMs += Math.max(0, this.lastActivityAt - this.activeSince);
+    this.activeSince = null;
+  }
+
+  /** Active time so far in this session, in milliseconds. */
+  sessionTimeMs(): number {
+    const t = this.now();
+    this.closeIdlePeriod(t);
+    return this.activeMs + (this.activeSince === null ? 0 : Math.max(0, t - this.activeSince));
+  }
+
   // ───────────── events from the UI ─────────────
   openModel(id: string): void {
     const next = markOpened(this.progress, id);
@@ -301,7 +344,7 @@ export class ProgressTracker {
     }
     ok = this.write('cmi.suspend_data', encodeProgress(this.content.contentHash, this.codecModels, this.progress)) && ok;
     if (this.progress.lastModelId) ok = this.write('cmi.core.lesson_location', this.progress.lastModelId.slice(0, ID_LIMIT)) && ok;
-    ok = this.write('cmi.core.session_time', formatScorm12Time(this.now() - this.startedAt)) && ok;
+    ok = this.write('cmi.core.session_time', formatScorm12Time(this.sessionTimeMs())) && ok;
     if (this.completed && !this.completionWritten) {
       if (this.write('cmi.core.lesson_status', 'completed')) this.completionWritten = true;
       else ok = false;
@@ -337,7 +380,7 @@ export class ProgressTracker {
     const c = this.client;
     if (c && this.mode === 'lms' && !c.finished) {
       if (!this.completed) c.set('cmi.core.exit', 'suspend');
-      c.set('cmi.core.session_time', formatScorm12Time(this.now() - this.startedAt));
+      c.set('cmi.core.session_time', formatScorm12Time(this.sessionTimeMs()));
       c.commit();
       c.finish();
     } else if (c && !c.finished) {
