@@ -7,7 +7,7 @@ import type { Progress } from './completion';
  * SCORM 1.2 allows only 4096 characters in suspend_data, so progress is stored as bitmasks over the
  * package's model order and each model's annotation order rather than as lists of ids:
  *
- *   "a1|<hash>|<last>|<openedHex>|<idx>:<hex>,<idx>:<hex>"
+ *   "a1|<hash>|<last>|<openedHex>|<idx>:<hex>,<idx>:<hex>[|<activeSeconds base 36>]"
  *
  * `hash` identifies which models and annotations exist and in what order (see buildPackage). If a re-uploaded
  * package has a different structure the stored bit positions may no longer match, so *all* saved progress is
@@ -54,9 +54,10 @@ export function encodeProgress(hash: string, models: CodecModel[], p: Progress):
     if (hex) annParts.push(`${idx.toString(36)}:${hex}`);
   });
   const base = `a1|${hash}|${lastIdx < 0 ? '' : lastIdx.toString(36)}|${openedHex}|`;
-  let data = base + annParts.join(',');
+  const time = p.activeSeconds ? `|${Math.floor(p.activeSeconds).toString(36)}` : '';
+  let data = base + annParts.join(',') + time;
   // Degrade gracefully rather than exceed the SCORM 1.2 limit: drop annotation detail first.
-  if (data.length > LMS_SUSPEND_DATA_LIMIT) data = base;
+  if (data.length > LMS_SUSPEND_DATA_LIMIT) data = base + time;
   return data;
 }
 
@@ -70,9 +71,12 @@ export function decodeProgress(raw: string, hash: string, models: CodecModel[]):
   if (!raw || !raw.startsWith('a1|')) return null;
   const parts = raw.split('|');
   if (parts.length < 5) return null;
-  const [, storedHash, last, openedHex, annRaw] = parts;
+  const [, storedHash, last, openedHex, annRaw, timeRaw] = parts;
   const contentMatched = storedHash === hash;
   const progress: Progress = { opened: [], viewed: {}, lastModelId: null };
+  // Time spent does not depend on the package structure, so it is kept even when the content changed.
+  const activeSeconds = timeRaw ? parseInt(timeRaw, 36) : 0;
+  if (activeSeconds > 0) progress.activeSeconds = activeSeconds;
   if (!contentMatched) return { progress, contentMatched };
   const openedBits = hexToBits(openedHex, models.length);
   models.forEach((m, i) => {

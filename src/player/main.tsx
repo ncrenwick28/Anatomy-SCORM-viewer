@@ -30,14 +30,9 @@ function boot() {
   window.addEventListener('unload', end);
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState !== 'hidden') return;
-    tracker.pause();
+    tracker.pause(); // stop the active-time clock first, so the save does not include time while hidden
     tracker.save();
   });
-  // Session time counts only active use: these events start the clock and keep it running. Capture phase on window,
-  // so the 3D viewer's own handlers cannot hide them. A pointer move counts only while dragging (rotating the model).
-  const active = () => tracker.noteActivity();
-  for (const type of ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const) window.addEventListener(type, active, { capture: true, passive: true });
-  window.addEventListener('pointermove', (e) => e.buttons && active(), { capture: true, passive: true });
   // Read-only diagnostics used by automated tests and support.
   (window as unknown as Record<string, unknown>).__ANATOMY_DEBUG__ = {
     tracker,

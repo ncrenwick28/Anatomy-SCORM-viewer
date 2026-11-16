@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { LIMITS, SCHEMA_VERSION } from './types';
+import { DEFAULT_MIN_ACTIVE_MINUTES, LIMITS, MAX_MIN_ACTIVE_MINUTES, SCHEMA_VERSION } from './types';
 
 /** Runtime validation of imported project data (backups, demo content). */
 
@@ -126,6 +126,7 @@ export const exportConfigSchema = z.object({
     fullscreen: z.boolean(),
   }),
   completion: z.enum(['launch', 'open-all', 'open-all-and-annotations']),
+  minActiveMinutes: z.number().int().min(0).max(MAX_MIN_ACTIVE_MINUTES).default(DEFAULT_MIN_ACTIVE_MINUTES),
   selectedModelIds: z.array(z.string().max(80)).max(LIMITS.maxModels),
 });
 

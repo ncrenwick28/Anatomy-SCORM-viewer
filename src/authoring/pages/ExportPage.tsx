@@ -7,7 +7,7 @@ import { ProgressTracker } from '../../player/tracker';
 import { accentTheme, contrastRatio, isValidHex, normaliseHex } from '../../shared/color';
 import { COMPLETION_RULE_LABELS } from '../../shared/completion';
 import { newId, nowIso } from '../../shared/ids';
-import { LIMITS, type CompletionRule, type PlayerFeatures } from '../../shared/types';
+import { LIMITS, MAX_MIN_ACTIVE_MINUTES, type CompletionRule, type PlayerFeatures } from '../../shared/types';
 import { RichText } from '../../ui/RichText';
 import { AssetThumb } from '../components/AssetThumb';
 import { download } from '../components/BackupMenu';
@@ -50,6 +50,8 @@ export function ExportPage({ onGoLibrary }: { onGoLibrary: () => void }) {
   const [previewing, setPreviewing] = useState(false);
   const [logoUrl, setLogoUrl] = useState<string | null>(null);
   const [accentText, setAccentText] = useState(config.accent);
+  const [minutesText, setMinutesText] = useState(String(config.minActiveMinutes));
+  const minutesValid = /^\d{1,3}$/.test(minutesText.trim()) && Number(minutesText) <= MAX_MIN_ACTIVE_MINUTES;
 
   useEffect(() => setAccentText(config.accent), [config.accent]);
   useEffect(() => {
@@ -141,7 +143,11 @@ export function ExportPage({ onGoLibrary }: { onGoLibrary: () => void }) {
 
   const previewContent = useMemo(() => buildPreviewContent(config, project.regions, project.systems, selected), [config, project.regions, project.systems, selected]);
   const previewTracker = useMemo(() => new ProgressTracker(previewContent, { api: null, storage: null }), [previewContent]);
-  useEffect(() => { if (previewing) previewTracker.start(); }, [previewing, previewTracker]);
+  useEffect(() => {
+    if (!previewing) return;
+    previewTracker.start();
+    return () => previewTracker.terminate();
+  }, [previewing, previewTracker]);
 
   if (previewing) {
     return <Player content={previewContent} tracker={previewTracker} resolveAsset={async (p) => (p.startsWith('asset:') ? (await assetUrl(p.slice(6))) ?? '' : p)} dracoPath={`${import.meta.env.BASE_URL}lib/draco/`} preview={{ onExit: () => setPreviewing(false), label: 'Package preview' }} />;
@@ -253,6 +259,16 @@ export function ExportPage({ onGoLibrary }: { onGoLibrary: () => void }) {
                 </label>
               ))}
             </fieldset>
+            <div className="field">
+              <label htmlFor="exp-min-time">Minimum time of active use (minutes)</label>
+              <input id="exp-min-time" className="input" type="number" inputMode="numeric" min={0} max={MAX_MIN_ACTIVE_MINUTES} step={1} style={{ maxWidth: '8rem' }} value={minutesText} aria-invalid={!minutesValid} aria-describedby="exp-min-time-hint"
+                onChange={(e) => { setMinutesText(e.target.value); const v = e.target.value.trim(); if (/^\d{1,3}$/.test(v) && Number(v) <= MAX_MIN_ACTIVE_MINUTES) set({ minActiveMinutes: Number(v) }); }} data-testid="export-min-time" />
+              {!minutesValid
+                ? <span className="error-text" role="alert">Enter a whole number of minutes from 0 to {MAX_MIN_ACTIVE_MINUTES}.</span>
+                : <span className="hint" id="exp-min-time-hint">{config.minActiveMinutes > 0
+                    ? `As well as the rule above, the learner must use the package for at least ${config.minActiveMinutes} minute${config.minActiveMinutes === 1 ? '' : 's'} in total (added up over visits) before it is marked complete. Only active use counts: time starts at their first click, tap, scroll or key press, stops while the page is hidden, and stops after 5 minutes without any interaction. With “Complete on launch”, the time is the only requirement. Set 0 for no time requirement.`
+                    : 'No time requirement: completion depends only on the rule above.'}</span>}
+            </div>
             <p className="hint">The LMS receives status “incomplete” on first launch and “completed” when the rule is met. No score is reported. Progress is stored as a compact code (a few hundred characters) in <code>cmi.suspend_data</code>, well inside the SCORM 1.2 limit of 4096 characters.</p>
           </section>
         </div>

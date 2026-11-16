@@ -134,6 +134,7 @@ export async function buildScormPackage(input: BuildInput, onProgress?: (done: n
     logo,
     features: config.features,
     completion: config.completion,
+    minActiveMinutes: config.minActiveMinutes,
     regions: input.regions.filter((c) => usedRegionIds.has(c.id)),
     systems: input.systems.filter((c) => usedSystemIds.has(c.id)),
     models: packageModels,

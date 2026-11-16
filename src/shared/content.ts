@@ -36,6 +36,8 @@ export interface PackageContent {
   logo: string | null;
   features: PlayerFeatures;
   completion: CompletionRule;
+  /** Minutes of active use also required for completion (0 or absent = none). */
+  minActiveMinutes?: number;
   regions: Category[];
   systems: Category[];
   models: PackageModel[];

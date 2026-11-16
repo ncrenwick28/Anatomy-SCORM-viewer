@@ -7,15 +7,29 @@ export function ProgressSummary({ content, state }: { content: PackageContent; s
   const c = state.completion;
   const rule = content.completion;
   const pct = Math.round(c.fraction * 100);
-  if (rule === 'launch') return null;
+  const timed = c.requiredSeconds > 0;
+  if (rule === 'launch' && !timed) return null;
+  // Whole minutes, rounded down, so "5 of 5" only shows once the requirement is really met.
+  const requiredMinutes = Math.ceil(c.requiredSeconds / 60);
+  const minutes = state.completed ? requiredMinutes : Math.min(Math.floor(c.activeSeconds / 60), requiredMinutes);
   return (
     <div className="pl-progress" aria-label="Your progress">
       <div className="pl-progress__text">
-        <strong>{c.modelsOpened} of {c.modelsTotal}</strong> models opened
+        {rule !== 'launch' && (
+          <>
+            <strong>{c.modelsOpened} of {c.modelsTotal}</strong> models opened
+          </>
+        )}
         {rule === 'open-all-and-annotations' && c.annotationsRequired > 0 && (
           <>
             {' · '}
             <strong>{c.annotationsViewed} of {c.annotationsRequired}</strong> annotations viewed
+          </>
+        )}
+        {timed && (
+          <>
+            {rule !== 'launch' && ' · '}
+            <strong>{minutes} of {requiredMinutes}</strong> minutes of active use
           </>
         )}
       </div>

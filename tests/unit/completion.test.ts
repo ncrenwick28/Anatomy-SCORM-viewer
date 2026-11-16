@@ -93,3 +93,30 @@ describe('progress codec', () => {
     expect(decodeProgress(raw, 'h', big)!.progress.opened).toHaveLength(300);
   });
 });
+
+describe('minimum active time', () => {
+  it('is added to the rule: both must be met', () => {
+    let p = markOpened(markOpened(markOpened(emptyProgress(), 'm1'), 'm2'), 'm3');
+    expect(computeCompletion('open-all', models, p, 300).complete).toBe(false);
+    p = { ...p, activeSeconds: 299 };
+    expect(computeCompletion('open-all', models, p, 300).complete).toBe(false);
+    p = { ...p, activeSeconds: 300 };
+    expect(computeCompletion('open-all', models, p, 300).complete).toBe(true);
+    // time alone is not enough either
+    expect(computeCompletion('open-all', models, { ...emptyProgress(), activeSeconds: 900 }, 300).complete).toBe(false);
+  });
+  it('is the only requirement under "complete on launch", and its progress fills the bar', () => {
+    const s = computeCompletion('launch', models, { ...emptyProgress(), activeSeconds: 150 }, 300);
+    expect(s.complete).toBe(false);
+    expect(s.fraction).toBe(0.5);
+    expect(computeCompletion('launch', models, { ...emptyProgress(), activeSeconds: 300 }, 300).complete).toBe(true);
+  });
+  it('round-trips through suspend_data, survives a content change, and old data still decodes', () => {
+    const cm = [{ id: 'm1', annotationIds: ['a1'] }];
+    const p = { ...markOpened(emptyProgress(), 'm1'), activeSeconds: 4321 };
+    const raw = encodeProgress('h', cm, p);
+    expect(decodeProgress(raw, 'h', cm)?.progress.activeSeconds).toBe(4321);
+    expect(decodeProgress(raw, 'other', cm)?.progress.activeSeconds).toBe(4321);
+    expect(decodeProgress('a1|h|0|1|', 'h', cm)?.progress).toEqual({ opened: ['m1'], viewed: {}, lastModelId: 'm1' });
+  });
+});

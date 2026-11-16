@@ -16,6 +16,7 @@ test('builds the sample package from the four demonstration models', async ({ pa
   await page.getByLabel(/Short description/).fill('Four schematic demonstration models showing the student experience: gallery, 3D viewer, annotations and a click-the-structure quiz.');
   await page.getByTestId('export-intro').fill('This is a **demonstration package** built with Anatomy SCORM Studio.\n\n- Open each model and rotate, zoom and pan it.\n- Select the numbered markers, or use the annotation list.\n- Open the **Quiz** tab to test yourself: click on the structure you are asked for, then see your score.\n\nThe models are simplified schematic shapes (CC0) and are *not* anatomically accurate.');
   await page.getByTestId('completion-open-all-and-annotations').check();
+  await page.getByTestId('export-min-time').fill('0'); // quick to check in a test course; see docs/LMS-NOTES.md
   await waitSaved(page);
   const zip = await buildViaUi(page, 'sample-package.zip');
   const files = await readZip(new Blob([readFileSync(zip)]), { maxTotalBytes: 1e9, maxEntries: 1000 });

@@ -6,11 +6,13 @@ import type { CompletionRule } from './types';
  * "Opened" – the learner opened the model in the viewer and it finished loading successfully.
  * "Viewed" (annotation) – the annotation's label and full description were displayed in the information
  *   panel (selected from the model or from the list). The quiz does not count towards completion.
+ * "Active seconds" – time actively using the package, summed over every visit of this attempt (see tracker).
  */
 export interface Progress {
   opened: string[];
   viewed: Record<string, string[]>;
   lastModelId: string | null;
+  activeSeconds?: number;
 }
 
 export interface CompletionModel {
@@ -30,11 +32,14 @@ export interface CompletionSummary {
   modelsTotal: number;
   annotationsViewed: number;
   annotationsRequired: number;
+  activeSeconds: number;
+  /** Active time the package requires (0 = none). */
+  requiredSeconds: number;
   /** 0–1 */
   fraction: number;
 }
 
-export function computeCompletion(rule: CompletionRule, models: CompletionModel[], progress: Progress): CompletionSummary {
+export function computeCompletion(rule: CompletionRule, models: CompletionModel[], progress: Progress, requiredSeconds = 0): CompletionSummary {
   const opened = new Set(progress.opened);
   let modelsOpened = 0;
   let annotationsRequired = 0;
@@ -67,7 +72,14 @@ export function computeCompletion(rule: CompletionRule, models: CompletionModel[
       break;
     }
   }
-  return { rule, complete, modelsOpened, modelsTotal, annotationsViewed, annotationsRequired, fraction };
+  const activeSeconds = progress.activeSeconds ?? 0;
+  if (requiredSeconds > 0) {
+    // The time requirement is added to the rule: both must be met. Under "complete on launch" it is the only one.
+    const timeFraction = Math.min(1, activeSeconds / requiredSeconds);
+    complete = complete && activeSeconds >= requiredSeconds;
+    fraction = rule === 'launch' ? timeFraction : (fraction + timeFraction) / 2;
+  }
+  return { rule, complete, modelsOpened, modelsTotal, annotationsViewed, annotationsRequired, activeSeconds, requiredSeconds, fraction };
 }
 
 /** Union of two progress records (progress only ever grows, so merging is always safe). */
@@ -79,6 +91,8 @@ export function mergeProgress(a: Progress, b: Progress, modelOrder: string[]): P
     opened: [...modelOrder.filter((id) => opened.has(id)), ...[...opened].filter((id) => !modelOrder.includes(id))],
     viewed,
     lastModelId: a.lastModelId ?? b.lastModelId,
+    // Both copies count the same attempt's visits, so the larger total is the most complete one.
+    ...(a.activeSeconds || b.activeSeconds ? { activeSeconds: Math.max(a.activeSeconds ?? 0, b.activeSeconds ?? 0) } : {}),
   };
 }
 
