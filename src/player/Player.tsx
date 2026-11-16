@@ -40,6 +40,25 @@ export function Player({ content, tracker, resolveAsset, dracoPath = 'lib/draco/
   const [lastOpened, setLastOpened] = useState<string | null>(null);
   const resolver = useMemo<AssetResolver>(() => resolveAsset ?? ((p) => p), [resolveAsset]);
 
+  // Session time counts only active use: these events start the clock and keep it running, and hiding the page stops
+  // it. Capture phase on window, so the 3D viewer's own handlers cannot hide them. A pointer move counts only while
+  // dragging (rotating the model).
+  useEffect(() => {
+    const active = () => tracker.noteActivity();
+    const move = (e: PointerEvent) => e.buttons && active();
+    const hidden = () => document.visibilityState === 'hidden' && tracker.pause();
+    const opts = { capture: true, passive: true };
+    const types = ['pointerdown', 'keydown', 'wheel', 'touchstart'] as const;
+    for (const t of types) window.addEventListener(t, active, opts);
+    window.addEventListener('pointermove', move, opts);
+    document.addEventListener('visibilitychange', hidden);
+    return () => {
+      for (const t of types) window.removeEventListener(t, active, opts);
+      window.removeEventListener('pointermove', move, opts);
+      document.removeEventListener('visibilitychange', hidden);
+    };
+  }, [tracker]);
+
   useEffect(() => {
     if (!useHash) return;
     const on = () => setRoute(parseHash(content));

@@ -198,7 +198,9 @@ export function WorkspacePage({ modelId, onBack, onGoExport }: { modelId: string
   const previewContent = useMemo(() => (model ? buildPreviewContent(project.exportConfig, project.regions, project.systems, [model]) : null), [model, project]);
   const previewTracker = useMemo(() => new ProgressTracker(previewContent ?? ({ packageId: 'x', contentHash: 'x', completion: 'open-all', models: [] } as never), { api: null, storage: null }), [previewContent]);
   useEffect(() => {
-    if (previewing) previewTracker.start();
+    if (!previewing) return;
+    previewTracker.start();
+    return () => previewTracker.terminate();
   }, [previewing, previewTracker]);
   const resolveAsset = useCallback(async (path: string) => (path.startsWith('asset:') ? (await assetUrl(path.slice(6))) ?? '' : path), []);
 

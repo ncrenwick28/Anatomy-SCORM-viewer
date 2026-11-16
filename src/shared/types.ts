@@ -151,6 +151,8 @@ export interface ExportConfig {
   accent: string;
   features: PlayerFeatures;
   completion: CompletionRule;
+  /** Minutes of active use (summed over visits) also required for completion; 0 = no time requirement. */
+  minActiveMinutes: number;
   /** Ordered list of model ids chosen for export. */
   selectedModelIds: string[];
 }
@@ -194,6 +196,8 @@ export const DEFAULT_FEATURES: PlayerFeatures = {
 };
 
 export const DEFAULT_ACCENT = '#0b6e8a';
+export const DEFAULT_MIN_ACTIVE_MINUTES = 5;
+export const MAX_MIN_ACTIVE_MINUTES = 240;
 
 export function defaultExportConfig(): ExportConfig {
   return {
@@ -204,6 +208,7 @@ export function defaultExportConfig(): ExportConfig {
     accent: DEFAULT_ACCENT,
     features: { ...DEFAULT_FEATURES },
     completion: 'open-all',
+    minActiveMinutes: DEFAULT_MIN_ACTIVE_MINUTES,
     selectedModelIds: [],
   };
 }

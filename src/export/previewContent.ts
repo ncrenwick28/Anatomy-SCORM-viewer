@@ -20,6 +20,7 @@ export function buildPreviewContent(config: ExportConfig, regions: Category[], s
     logo: config.logoAssetId ? `asset:${config.logoAssetId}` : null,
     features: config.features,
     completion: config.completion,
+    minActiveMinutes: config.minActiveMinutes,
     regions: regions.filter((r) => models.some((m) => m.regionIds.includes(r.id))),
     systems: systems.filter((s) => models.some((m) => m.systemIds.includes(s.id))),
     models: models.map((m) => {

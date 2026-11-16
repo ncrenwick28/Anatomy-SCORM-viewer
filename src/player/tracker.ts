@@ -18,7 +18,9 @@ import { Scorm12Client, findApi, formatScorm12Time, type Scorm12Api } from './sc
  *
  * Session time counts active use only, so a package embedded in a longer page does not report time spent reading
  * the rest of that page: the clock starts at the first interaction (noteActivity), stops when the page is hidden
- * (pause) and stops at the last interaction once the learner has been idle for longer than idleMs.
+ * (pause) and stops at the last interaction once the learner has been idle for longer than idleMs. The same active
+ * time, summed over every visit of the attempt (kept in suspend_data), can be required for completion
+ * (content.minActiveMinutes).
  */
 
 export type TrackingMode = 'lms' | 'browse' | 'standalone';
@@ -58,6 +60,8 @@ export interface TrackerOptions {
   retryMs?: number;
   /** Inactivity after which the session-time clock stops (at the last interaction). */
   idleMs?: number;
+  /** How often a pending time requirement is checked while the package is open. */
+  timeCheckMs?: number;
 }
 
 type Listener = (s: TrackerState) => void;
@@ -83,6 +87,9 @@ export class ProgressTracker {
   /** Start of the current active period, or null while the clock is stopped. */
   private activeSince: number | null = null;
   private lastActivityAt = 0;
+  /** Active time from earlier visits of this attempt (from saved progress). */
+  private priorActiveMs = 0;
+  private timeCheckTimer: ReturnType<typeof setInterval> | null = null;
   private terminated = false;
   private saveTimer: ReturnType<typeof setTimeout> | null = null;
   private retryTimer: ReturnType<typeof setInterval> | null = null;
@@ -92,7 +99,7 @@ export class ProgressTracker {
   /** Local-storage key; scoped to the learner once the LMS has told us who they are (shared computers). */
   private storageKey: string;
 
-  constructor(private readonly content: Pick<PackageContent, 'packageId' | 'contentHash' | 'completion' | 'models'>, private readonly opts: TrackerOptions = {}) {
+  constructor(private readonly content: Pick<PackageContent, 'packageId' | 'contentHash' | 'completion' | 'minActiveMinutes' | 'models'>, private readonly opts: TrackerOptions = {}) {
     this.now = opts.now ?? (() => Date.now());
     this.codecModels = content.models.map((m) => ({ id: m.id, annotationIds: m.annotations.map((a) => a.id) }));
     this.storageKey = `anatomy-scorm:${content.packageId}:standalone`;
@@ -109,6 +116,10 @@ export class ProgressTracker {
 
   // ───────────── lifecycle ─────────────
   start(): void {
+    // A preview tracker is started again each time the preview reopens; earlier time is carried by progress.
+    this.terminated = false;
+    this.activeMs = 0;
+    this.activeSince = null;
     const win = this.opts.window ?? (typeof window !== 'undefined' ? window : undefined);
     let api: Scorm12Api | null = null;
     if (this.opts.api !== undefined) api = this.opts.api;
@@ -121,10 +132,33 @@ export class ProgressTracker {
     }
     if (api) this.startLms(api);
     else this.startStandalone(null);
-    if (this.content.completion === 'launch') this.markComplete();
+    this.priorActiveMs = (this.progress.activeSeconds ?? 0) * 1000;
     this.recompute();
     this.emit();
     if (this.mode === 'lms') this.scheduleSave(true);
+    // Time passes without any progress event, so a pending time requirement is checked periodically.
+    if (this.requiredSeconds > 0 && !this.completed && this.mode !== 'browse') {
+      this.timeCheckTimer = setInterval(() => this.checkTime(), this.opts.timeCheckMs ?? 5000);
+    }
+  }
+
+  private get requiredSeconds(): number {
+    return Math.max(0, Math.round((this.content.minActiveMinutes ?? 0) * 60));
+  }
+
+  private checkTime(): void {
+    const wasComplete = this.completed;
+    this.recompute();
+    this.emit();
+    if (this.completed && !wasComplete) {
+      this.stopTimeCheck();
+      this.scheduleSave(true);
+    }
+  }
+
+  private stopTimeCheck(): void {
+    if (this.timeCheckTimer) clearInterval(this.timeCheckTimer);
+    this.timeCheckTimer = null;
   }
 
   private startLms(api: Scorm12Api): void {
@@ -245,6 +279,12 @@ export class ProgressTracker {
     this.activeSince = null;
   }
 
+  /** Copies the attempt's total active time into progress, so it is saved and counted for completion. */
+  private syncActiveTime(): void {
+    const seconds = Math.floor((this.priorActiveMs + this.sessionTimeMs()) / 1000);
+    if (seconds !== (this.progress.activeSeconds ?? 0)) this.progress = { ...this.progress, activeSeconds: seconds };
+  }
+
   /** Active time so far in this session, in milliseconds. */
   sessionTimeMs(): number {
     const t = this.now();
@@ -276,10 +316,12 @@ export class ProgressTracker {
   }
 
   private recompute(): void {
+    this.syncActiveTime();
     const summary = computeCompletion(
       this.content.completion,
       this.content.models.map((m) => ({ id: m.id, requiredAnnotationIds: m.annotations.filter((a) => a.required).map((a) => a.id) })),
       this.progress,
+      this.requiredSeconds,
     );
     if (summary.complete && !this.completed) this.markComplete();
   }
@@ -332,6 +374,7 @@ export class ProgressTracker {
 
   /** Writes current progress to the LMS (and to local storage as a safety net). */
   save(): void {
+    if (this.mode !== 'browse') this.recompute();
     this.saveLocal();
     if (!this.client || this.mode !== 'lms' || this.client.finished) {
       this.emit();
@@ -375,6 +418,7 @@ export class ProgressTracker {
     if (this.saveTimer) clearTimeout(this.saveTimer);
     if (this.retryTimer) clearInterval(this.retryTimer);
     this.saveTimer = this.retryTimer = null;
+    this.stopTimeCheck();
     this.save();
     this.terminated = true;
     const c = this.client;
@@ -398,6 +442,7 @@ export class ProgressTracker {
         this.content.completion,
         this.content.models.map((m) => ({ id: m.id, requiredAnnotationIds: m.annotations.filter((a) => a.required).map((a) => a.id) })),
         this.progress,
+        this.requiredSeconds,
       ),
       completed: this.completed,
       resumed: this.resumed,

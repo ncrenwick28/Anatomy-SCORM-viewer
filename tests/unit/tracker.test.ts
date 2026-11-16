@@ -466,3 +466,80 @@ describe('ProgressTracker session time (active use only)', () => {
     expect(api.rejected).toEqual([]);
   });
 });
+
+describe('ProgressTracker minimum active time for completion', () => {
+  const timed = (rule: CompletionRule, minActiveMinutes: number) => ({ ...content(rule), minActiveMinutes });
+
+  it('completes only once the rule is met AND enough active time has passed, checked while the page is open', () => {
+    let clock = 0;
+    const api = asApi(lms());
+    const t = new ProgressTracker(timed('open-all', 5), { api, storage: null, now: () => clock, timeCheckMs: 1000 });
+    t.start();
+    t.noteActivity();
+    t.openModel('m1');
+    t.openModel('m2');
+    vi.advanceTimersByTime(1000);
+    expect(api.cmi.core.lesson_status).toBe('incomplete');
+    // keep interacting for 5 minutes
+    for (let i = 0; i < 10; i++) {
+      clock += 30_000;
+      t.noteActivity();
+      vi.advanceTimersByTime(1000);
+    }
+    expect(t.getState().completed).toBe(true);
+    expect(api.cmi.core.lesson_status).toBe('completed');
+    expect(api.rejected).toEqual([]);
+  });
+
+  it('adds up active time over visits of the same attempt', () => {
+    let clock = 0;
+    const first = asApi(lms());
+    const a = new ProgressTracker(timed('launch', 5), { api: first, storage: null, now: () => clock });
+    a.start();
+    a.noteActivity();
+    clock += 3 * 60_000;
+    a.terminate();
+    expect(first.cmi.core.lesson_status).toBe('incomplete');
+
+    const second = asApi(lms({ lesson_status: 'incomplete', entry: 'resume' }));
+    second.cmi.suspend_data = first.cmi.suspend_data;
+    const b = new ProgressTracker(timed('launch', 5), { api: second, storage: null, now: () => clock, timeCheckMs: 1000 });
+    b.start();
+    expect(b.getState().completion.activeSeconds).toBe(180);
+    b.noteActivity();
+    clock += 119_000;
+    vi.advanceTimersByTime(1000);
+    expect(b.getState().completed).toBe(false);
+    clock += 1_000;
+    b.noteActivity();
+    vi.advanceTimersByTime(1000);
+    expect(b.getState().completed).toBe(true);
+    expect(second.cmi.core.lesson_status).toBe('completed');
+    // session time is still this visit only
+    b.terminate();
+    expect(second.writes['cmi.core.session_time']).toBe('0000:02:00.00');
+  });
+
+  it('idle and hidden time does not count towards the requirement', () => {
+    let clock = 0;
+    const api = asApi(lms());
+    const t = new ProgressTracker(timed('launch', 5), { api, storage: null, now: () => clock, idleMs: 60_000, timeCheckMs: 1000 });
+    t.start();
+    clock += 60 * 60_000; // an hour on the page without touching the package
+    vi.advanceTimersByTime(1000);
+    t.noteActivity();
+    clock += 30_000;
+    t.pause();
+    clock += 60 * 60_000; // an hour hidden
+    vi.advanceTimersByTime(1000);
+    expect(t.getState().completion.activeSeconds).toBe(30);
+    expect(t.getState().completed).toBe(false);
+  });
+
+  it('without a time requirement, "complete on launch" still completes at once', () => {
+    const api = asApi(lms());
+    const t = new ProgressTracker(timed('launch', 0), { api, storage: null });
+    t.start();
+    expect(t.getState().completed).toBe(true);
+  });
+});

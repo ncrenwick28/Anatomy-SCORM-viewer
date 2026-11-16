@@ -136,6 +136,7 @@ test.describe('P-01: an annotation is only "viewed" once its description is show
     await card(page, HEART).getByTestId('select-model').check();
     await page.goto('/#/export');
     await page.getByTestId('completion-open-all-and-annotations').check();
+    await page.getByTestId('export-min-time').fill('0'); // these tests check the rule itself, not the time requirement
     await page.getByTestId('feature-annotationList').uncheck();
     await expect(page.getByTestId('feature-selfStudy')).toBeEnabled(); // the quiz does not depend on the list
     await waitSaved(page);
@@ -218,6 +219,7 @@ test.describe('P-02: the LMS is told "incomplete" even if it rejected the first 
     await card(page, HEART).getByTestId('select-model').check();
     await page.goto('/#/export');
     await page.getByTestId('completion-open-all-and-annotations').check(); // opening the model alone must not complete it
+    await page.getByTestId('export-min-time').fill('0'); // these tests check the rule itself, not the time requirement
     await waitSaved(page);
     const zip = await buildViaUi(page, 'p02-package.zip');
     const server = await serveDirectory(await prepareRoot(zip), 0, lmsRoutes);
@@ -407,6 +409,9 @@ test.describe('P-21: progress kept on a shared computer belongs to one learner',
     await gotoApp(page);
     await loadDemo(page);
     await card(page, HEART).getByTestId('select-model').check();
+    await page.goto('/#/export');
+    await page.getByTestId('export-min-time').fill('0'); // these tests check the rule itself, not the time requirement
+    await waitSaved(page);
     const zip = await buildViaUi(page, 'p21-package.zip'); // default rule: open every model (one model)
     const server = await serveDirectory(await prepareRoot(zip), 0, lmsRoutes);
     const learnerPage = await ctx.newPage(); // same browser profile = same computer

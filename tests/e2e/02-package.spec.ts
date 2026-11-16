@@ -68,6 +68,8 @@ test.describe.serial('SCORM package: build in the authoring app, then test the e
     await page.getByTestId('export-logo').setInputFiles({ name: 'school logo.png', mimeType: 'image/png', buffer: Buffer.from(makePng(64, 32, [20, 90, 160])) });
     await page.getByTestId('export-accent').fill('#1a5fb4');
     await page.getByTestId('completion-open-all-and-annotations').check();
+    await expect(page.getByTestId('export-min-time')).toHaveValue('5'); // default time requirement
+    await page.getByTestId('export-min-time').fill('0'); // these tests check the rule itself, not the time requirement
     // Move the knee first, then back (ordering controls)
     await page.getByRole('button', { name: /Move .*Knee.* earlier/ }).click();
     await waitSaved(page);
